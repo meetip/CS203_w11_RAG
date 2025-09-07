@@ -1,0 +1,3535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS203 Week 11: Retrieval-Augmented Generation (RAG) - Deep Dive</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <style>
+        /* Base Variables */
+        :root {
+            --color-bg-page: #F7FAFC;
+            --color-bg-content: #FFFFFF;
+            --color-text-primary: #1A202C;
+            --color-text-secondary: #4A5567;
+            --color-accent-primary: #2B6CB0;
+            --color-accent-secondary: #38A165;
+            --color-border: #E2E8F0;
+            --color-code-bg: #2D3748;
+            --color-code-text: #F8F8F2;
+            --font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-family-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+            --container-max-width: 100;
+            --nav-width: 280px;
+            --spacing-unit: 8px;
+            --border-radius: 8px;
+        }
+
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-family-base);
+            font-size: 16px;
+            line-height: 1.7;
+            color: var(--color-text-primary);
+            background-color: var(--color-bg-page);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            scroll-behavior: smooth;
+        }
+
+        /* Navigation Sidebar */
+        .nav-sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: var(--nav-width);
+            height: 100vh;
+            background-color: var(--color-bg-page);
+            border-right: 1px solid var(--color-border);
+            overflow-y: auto;
+            z-index: 1000;
+            transform: translateX(0);
+            transition: transform 0.3s ease;
+        }
+
+        .nav-header {
+            padding: calc(var(--spacing-unit) * 3) calc(var(--spacing-unit) * 2) calc(var(--spacing-unit) * 2);
+            border-bottom: 1px solid var(--color-border);
+            background-color: var(--color-accent-primary);
+            color: white;
+        }
+
+        .nav-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: calc(var(--spacing-unit) / 2);
+        }
+
+        .nav-subtitle {
+            font-size: 0.875rem;
+            opacity: 0.9;
+        }
+
+        .nav-menu {
+            padding: 0;
+        }
+
+        .nav-item {
+            list-style: none;
+        }
+
+        .nav-link {
+            display: block;
+            padding: calc(var(--spacing-unit) * 1.5) calc(var(--spacing-unit) * 2);
+            color: var(--color-text-secondary);
+            text-decoration: none;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.95rem;
+            font-weight: 500;
+            line-height: 1.6;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .nav-link:hover {
+            color: var(--color-text-primary);
+            background-color: rgba(43, 108, 176, 0.05);
+        }
+
+        .nav-link.active {
+            color: var(--color-accent-primary);
+            font-weight: 600;
+            background-color: rgba(43, 108, 176, 0.1);
+            border-left: 2px solid var(--color-accent-primary);
+        }
+
+        /* Mobile Navigation Toggle */
+        .nav-toggle {
+            display: none;
+            position: fixed;
+            top: calc(var(--spacing-unit) * 2);
+            left: calc(var(--spacing-unit) * 2);
+            z-index: 1001;
+            background-color: var(--color-accent-primary);
+            color: white;
+            border: none;
+            padding: calc(var(--spacing-unit) * 1.5);
+            border-radius: calc(var(--border-radius) / 2);
+            cursor: pointer;
+            font-size: 1.2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: var(--nav-width);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: var(--container-max-width);
+            margin: 0 auto;
+            padding: calc(var(--spacing-unit) * 4);
+        }
+
+        /* Page Header */
+        .page-header {
+            background-color: var(--color-bg-content);
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius);
+            padding: calc(var(--spacing-unit) * 4);
+            margin-bottom: calc(var(--spacing-unit) * 4);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+
+        .page-header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            margin-bottom: calc(var(--spacing-unit) * 1);
+            line-height: 1.2;
+        }
+
+        .course-info {
+            font-size: 1.1rem;
+            color: var(--color-text-primary);
+            margin-bottom: calc(var(--spacing-unit) * 2);
+        }
+
+        .course-info strong {
+            color: var(--color-accent-primary);
+        }
+
+        /* Content Sections */
+        .content-section {
+            background-color: var(--color-bg-content);
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius);
+            padding: calc(var(--spacing-unit) * 4);
+            margin-bottom: calc(var(--spacing-unit) * 8);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            scroll-margin-top: calc(var(--spacing-unit) * 4);
+        }
+
+        /* Typography Hierarchy */
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+            line-height: 1.2;
+            margin-bottom: calc(var(--spacing-unit) * 2);
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            line-height: 1.3;
+            margin-bottom: calc(var(--spacing-unit) * 3);
+            border-bottom: 2px solid var(--color-accent-primary);
+            padding-bottom: calc(var(--spacing-unit) * 1);
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--color-accent-primary);
+            line-height: 1.4;
+            margin-bottom: calc(var(--spacing-unit) * 2);
+            margin-top: calc(var(--spacing-unit) * 4);
+        }
+
+        h4 {
+            font-size: 1.125rem;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            line-height: 1.5;
+            margin-bottom: calc(var(--spacing-unit) * 1.5);
+            margin-top: calc(var(--spacing-unit) * 3);
+        }
+
+        p {
+            margin-bottom: calc(var(--spacing-unit) * 2);
+        }
+
+        ul, ol {
+            margin-bottom: calc(var(--spacing-unit) * 2);
+            padding-left: calc(var(--spacing-unit) * 4);
+        }
+
+        li {
+            margin-bottom: calc(var(--spacing-unit) * 1);
+        }
+
+        /* Learning Objectives Special Styling */
+        .learning-objectives {
+            background: linear-gradient(135deg, #EBF8FF 0%, #BEE3F8 100%);
+            border-left: 4px solid var(--color-accent-primary);
+            padding: calc(var(--spacing-unit) * 3);
+            margin-bottom: calc(var(--spacing-unit) * 4);
+            border-radius: 0 var(--border-radius) var(--border-radius) 0;
+        }
+
+        .learning-objectives h3 {
+            color: var(--color-accent-primary);
+            margin-top: 0;
+        }
+
+        /* Code Blocks */
+        pre {
+            background-color: var(--color-code-bg);
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius);
+            padding: calc(var(--spacing-unit) * 2);
+            margin: calc(var(--spacing-unit) * 3) 0;
+            overflow-x: auto;
+            font-family: var(--font-family-mono);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        code {
+            font-family: var(--font-family-mono);
+            font-size: 0.9rem;
+        }
+
+        pre code {
+            color: var(--color-code-text);
+        }
+
+        :not(pre) > code {
+            background-color: rgba(45, 55, 72, 0.1);
+            color: var(--color-accent-primary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: calc(var(--spacing-unit) * 3) 0;
+            background-color: var(--color-bg-content);
+        }
+
+        thead th {
+            background-color: var(--color-bg-page);
+            border-bottom: 2px solid var(--color-border);
+            text-align: left;
+            padding: calc(var(--spacing-unit) * 1.5);
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        tbody td {
+            border-bottom: 1px solid var(--color-border);
+            padding: calc(var(--spacing-unit) * 1.5);
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: rgba(247, 250, 252, 0.5);
+        }
+
+        /* Visual Diagram Container */
+        .visual-container {
+            text-align: center;
+            margin: calc(var(--spacing-unit) * 4) 0;
+            padding: calc(var(--spacing-unit) * 3);
+            background-color: white;
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .visual-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+        }
+
+        .visual-caption {
+            margin-top: calc(var(--spacing-unit) * 2);
+            font-style: italic;
+            color: var(--color-text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+
+        /* Conceptual Section Styling */
+        .concept-section {
+            background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%);
+            border-left: 4px solid var(--color-accent-secondary);
+            border-radius: var(--border-radius);
+            padding: calc(var(--spacing-unit) * 4);
+            margin: calc(var(--spacing-unit) * 4) 0;
+        }
+
+        .concept-header {
+            margin-bottom: calc(var(--spacing-unit) * 3);
+        }
+
+        .concept-title {
+            color: var(--color-accent-secondary);
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        /* Highlight Box */
+        .highlight-box {
+            background-color: #FEF3C7;
+            border-left: 4px solid #F59E0B;
+            padding: calc(var(--spacing-unit) * 3);
+            margin: calc(var(--spacing-unit) * 3) 0;
+            border-radius: 0 var(--border-radius) var(--border-radius) 0;
+        }
+
+        .highlight-title {
+            font-weight: 600;
+            color: #92400E;
+            margin-bottom: calc(var(--spacing-unit) * 1);
+        }
+
+        /* Comparison Grid */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: calc(var(--spacing-unit) * 3);
+            margin: calc(var(--spacing-unit) * 4) 0;
+        }
+
+        .comparison-item {
+            background-color: white;
+            padding: calc(var(--spacing-unit) * 3);
+            border: 1px solid var(--color-border);
+            border-radius: var(--border-radius);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .comparison-item h5 {
+            color: var(--color-accent-primary);
+            margin-bottom: calc(var(--spacing-unit) * 2);
+            font-size: 1.1rem;
+        }
+
+        /* Implementation Box */
+        .implementation-box {
+            background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
+            border: 1px solid #93C5FD;
+            padding: calc(var(--spacing-unit) * 3);
+            margin: calc(var(--spacing-unit) * 3) 0;
+            border-radius: var(--border-radius);
+        }
+
+        .implementation-title {
+            font-weight: 600;
+            color: var(--color-accent-primary);
+            margin-bottom: calc(var(--spacing-unit) * 1);
+        }
+
+        /* Flow Diagrams */
+        .flow-diagram {
+            text-align: center;
+            margin: calc(var(--spacing-unit) * 4) 0;
+            padding: calc(var(--spacing-unit) * 2);
+            background-color: var(--color-bg-page);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--color-border);
+        }
+
+        .diagram-box {
+            display: inline-block;
+            background-color: var(--color-bg-content);
+            border: 2px solid var(--color-accent-primary);
+            border-radius: var(--border-radius);
+            padding: calc(var(--spacing-unit) * 1.5) calc(var(--spacing-unit) * 3);
+            margin: calc(var(--spacing-unit) * 1);
+            font-weight: 500;
+            color: var(--color-accent-primary);
+        }
+
+        .diagram-arrow {
+            display: inline-block;
+            margin: 0 calc(var(--spacing-unit) * 1);
+            color: var(--color-text-primary);
+            font-size: 1.2rem;
+        }
+
+        /* Scroll to Top Button */
+        .scroll-to-top {
+            position: fixed;
+            bottom: calc(var(--spacing-unit) * 4);
+            right: calc(var(--spacing-unit) * 4);
+            background-color: var(--color-accent-primary);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 999;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .scroll-to-top.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .scroll-to-top:hover {
+            background-color: #2C5282;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+        }
+
+        /* Links */
+        a {
+            color: var(--color-accent-primary);
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px solid transparent;
+            transition: border-bottom-color 0.2s ease;
+        }
+
+        a:hover {
+            border-bottom-color: var(--color-accent-primary);
+        }
+
+        /* Focus States for Accessibility */
+        a:focus, button:focus {
+            outline: 2px solid var(--color-accent-primary);
+            outline-offset: 2px;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 1024px) {
+            :root {
+                --nav-width: 0px;
+            }
+            
+            .nav-sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            
+            .nav-sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .nav-toggle {
+                display: block;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: calc(var(--spacing-unit) * 2);
+            }
+            
+            .page-header {
+                padding: calc(var(--spacing-unit) * 3);
+            }
+            
+            .page-header h1 {
+                font-size: 2rem;
+            }
+            
+            h2 {
+                font-size: 1.5rem;
+            }
+            
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .content-section {
+                padding: calc(var(--spacing-unit) * 3);
+            }
+            
+            .concept-section {
+                padding: calc(var(--spacing-unit) * 3);
+            }
+            
+            .scroll-to-top {
+                bottom: calc(var(--spacing-unit) * 2);
+                right: calc(var(--spacing-unit) * 2);
+                width: 45px;
+                height: 45px;
+                font-size: 1.3rem;
+            }
+        }
+
+        /* Print Styles for PDF Conversion */
+        @media print {
+            .nav-sidebar,
+            .nav-toggle,
+            .scroll-to-top {
+                display: none;
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            body {
+                background-color: white;
+                color: black;
+                font-size: 12pt;
+                line-height: 1.4;
+            }
+            
+            .content-section {
+                box-shadow: none;
+                border: 1px solid #CCCCCC;
+                page-break-inside: avoid;
+                margin-bottom: calc(var(--spacing-unit) * 2);
+            }
+            
+            h1, h2 {
+                color: black;
+            }
+            
+            h2 {
+                page-break-before: auto;
+            }
+            
+            pre, code {
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }
+            
+            a {
+                color: black;
+                text-decoration: none;
+                border-bottom: none;
+            }
+            
+            table {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Mobile Navigation Toggle -->
+    <button class="nav-toggle" id="navToggle">☰</button>
+
+    <!-- Navigation Sidebar -->
+    <nav class="nav-sidebar" id="navSidebar">
+        <div class="nav-header">
+            <div class="nav-title">CS203 Week 11</div>
+            <div class="nav-subtitle">RAG Deep Dive</div>
+        </div>
+        <ul class="nav-menu">
+            <li class="nav-item">
+                <a href="#learning-objectives" class="nav-link">Learning Objectives</a>
+            </li>
+            <li class="nav-item">
+                <a href="#introduction" class="nav-link">Introduction to RAG</a>
+            </li>
+            <li class="nav-item">
+                <a href="#knowledge-problem" class="nav-link">The Knowledge Problem</a>
+            </li>
+            <li class="nav-item">
+                <a href="#rag-architecture" class="nav-link">RAG Architecture Overview</a>
+            </li>
+            <li class="nav-item">
+                <a href="#document-processing" class="nav-link">Document Processing & Indexing</a>
+            </li>
+            <li class="nav-item">
+                <a href="#vector-embeddings" class="nav-link">Vector Embeddings & Similarity Search</a>
+            </li>
+            <li class="nav-item">
+                <a href="#advanced-retrieval" class="nav-link">Advanced Retrieval Strategies</a>
+            </li>
+            <li class="nav-item">
+                <a href="#generation-context" class="nav-link">Generation with Retrieved Context</a>
+            </li>
+            <li class="nav-item">
+                <a href="#rag-implementation" class="nav-link">RAG Implementation - Practical Examples</a>
+            </li>
+            <li class="nav-item">
+                <a href="#advanced-patterns" class="nav-link">Advanced RAG Patterns</a>
+            </li>
+            <li class="nav-item">
+                <a href="#performance-optimization" class="nav-link">Performance Optimization & Best Practices</a>
+            </li>
+            <li class="nav-item">
+                <a href="#evaluation-testing" class="nav-link">RAG Evaluation & Testing</a>
+            </li>
+            <li class="nav-item">
+                <a href="#summary" class="nav-link">Summary & Lab Preview</a>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <header class="page-header">
+                <h1>CS203 Week 11: Retrieval-Augmented Generation (RAG) - Deep Dive</h1>
+                <div class="course-info">
+                    <strong>Course:</strong> CS203 Computer Science Technology<br>
+                    <strong>Duration:</strong> 1.5 hours lecture | 2 hours lab<br>
+                    <strong>Target:</strong> 2nd-year Computer Science students<br>
+                    <strong>Prerequisites:</strong> Week 10 (Structured Outputs, Function Calling & Tool Calling)
+                </div>
+            </header>
+
+            <!-- Learning Objectives -->
+            <section id="learning-objectives" class="content-section learning-objectives">
+                <h3>Learning Objectives</h3>
+                <p><strong>By the end of this session, you will be able to:</strong></p>
+                <ol>
+                    <li>Understand the fundamental limitations of traditional LLMs and why RAG is essential</li>
+                    <li>Explain the complete RAG pipeline from document processing to response generation</li>
+                    <li>Implement document indexing, vector embeddings, and similarity search</li>
+                    <li>Build a complete RAG system using modern tools and frameworks</li>
+                    <li>Optimize RAG performance through advanced retrieval strategies and prompt engineering</li>
+                </ol>
+            </section>
+
+            <!-- Section 1: Introduction to RAG -->
+            <section id="introduction" class="content-section">
+                <h2>1. Introduction to RAG</h2>
+
+                <h3>What is Retrieval-Augmented Generation?</h3>
+                <p>Retrieval-Augmented Generation (RAG) is an architectural pattern that combines the power of large language models with external knowledge retrieval systems. Instead of relying solely on the model's training data, RAG dynamically fetches relevant information from external sources to enhance the generation process.</p>
+
+                <div class="concept-section">
+                    <div class="concept-header">
+                        <h3 class="concept-title">Core RAG Concept</h3>
+                    </div>
+                    <p>RAG works by first retrieving relevant documents or passages based on a user's query, then using this retrieved context to inform the language model's response. This approach addresses key limitations of traditional LLMs while maintaining their natural language generation capabilities.</p>
+                </div>
+
+                <h3>Why RAG Matters in 2025</h3>
+                <p>In the current AI landscape, RAG has become essential for building production-ready AI applications:</p>
+                <ul>
+                    <li><strong>Knowledge Currency:</strong> Keep AI systems updated with the latest information without retraining</li>
+                    <li><strong>Domain Specialization:</strong> Incorporate private, proprietary, or specialized knowledge</li>
+                    <li><strong>Factual Accuracy:</strong> Ground responses in verified sources and reduce hallucinations</li>
+                    <li><strong>Cost Efficiency:</strong> Avoid expensive model retraining for knowledge updates</li>
+                    <li><strong>Transparency:</strong> Provide source attribution and enable fact-checking</li>
+                </ul>
+
+                <h3>Real-World Applications and Success Stories</h3>
+                <p>RAG is powering innovative applications across industries:</p>
+                <ul>
+                    <li><strong>Enterprise Knowledge Management:</strong> Microsoft's Copilot for Microsoft 365</li>
+                    <li><strong>Customer Support:</strong> Automated help desks with access to product documentation</li>
+                    <li><strong>Research Assistance:</strong> Scientific literature analysis and synthesis</li>
+                    <li><strong>Legal Tech:</strong> Case law research and document analysis</li>
+                    <li><strong>Financial Services:</strong> Regulatory compliance and market analysis</li>
+                    <li><strong>Healthcare:</strong> Medical literature search and clinical decision support</li>
+                </ul>
+
+                <div class="highlight-box">
+                    <div class="highlight-title">Key Insight: Beyond Traditional Chatbots</div>
+                    <p>RAG transforms AI from static knowledge repositories into dynamic, context-aware assistants that can access and synthesize information from vast, up-to-date knowledge bases in real-time.</p>
+                </div>
+            </section>
+
+            <!-- Section 2: The Knowledge Problem -->
+            <section id="knowledge-problem" class="content-section">
+                <h2>2. The Knowledge Problem</h2>
+
+                <h3>Traditional LLM Limitations</h3>
+                <p>Even the most advanced language models face fundamental constraints that limit their effectiveness in real-world applications:</p>
+
+                <div class="visual-container">
+                    <img src="imgs/rag_vs_traditional_detailed.png" alt="Detailed comparison between traditional LLM approach and RAG-enhanced approach, showing knowledge sources, information currency, accuracy, and domain coverage differences">
+                    <div class="visual-caption">Figure 1: Comprehensive comparison of traditional LLMs versus RAG-enhanced systems</div>
+                </div>
+
+                <h4>Training Data Cutoff</h4>
+                <p>LLMs are trained on datasets with specific temporal boundaries. GPT-4's training data, for example, has a knowledge cutoff, meaning it cannot access information beyond that date. This creates significant limitations:</p>
+                <ul>
+                    <li>Cannot answer questions about recent events</li>
+                    <li>Lacks awareness of new technologies, products, or discoveries</li>
+                    <li>May provide outdated information that has since been corrected</li>
+                </ul>
+
+                <h4>Hallucination and Factual Accuracy</h4>
+                <p>When LLMs encounter queries about topics they're uncertain about, they may generate plausible-sounding but factually incorrect responses:</p>
+                <ul>
+                    <li>Fabricated citations and references</li>
+                    <li>Incorrect statistical data or facts</li>
+                    <li>Confident-sounding misinformation</li>
+                </ul>
+
+                <h4>Domain-Specific Knowledge Gaps</h4>
+                <p>LLMs struggle with specialized domains that require:</p>
+                <ul>
+                    <li><strong>Private Data:</strong> Internal company documents, policies, procedures</li>
+                    <li><strong>Technical Specifications:</strong> Product manuals, API documentation, troubleshooting guides</li>
+                    <li><strong>Real-Time Data:</strong> Current stock prices, weather conditions, live system status</li>
+                    <li><strong>Personal Context:</strong> User history, preferences, previous conversations</li>
+                </ul>
+
+                <div class="comparison-grid">
+                    <div class="comparison-item">
+                        <h5>Traditional LLM Challenges</h5>
+                        <ul>
+                            <li>Static knowledge base frozen at training time</li>
+                            <li>No access to private or proprietary information</li>
+                            <li>Risk of hallucination when uncertain</li>
+                            <li>Cannot verify information against sources</li>
+                            <li>Expensive to update with new knowledge</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-item">
+                        <h5>RAG Solutions</h5>
+                        <ul>
+                            <li>Dynamic access to current information</li>
+                            <li>Integration with private knowledge bases</li>
+                            <li>Grounded responses with source attribution</li>
+                            <li>Verifiable information with citations</li>
+                            <li>Easy knowledge updates without retraining</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>The Need for Dynamic, Up-to-Date Knowledge</h3>
+                <p>Modern applications require AI systems that can:</p>
+                <ul>
+                    <li><strong>Stay Current:</strong> Access the latest information and updates</li>
+                    <li><strong>Scale Knowledge:</strong> Handle vast, growing information repositories</li>
+                    <li><strong>Maintain Accuracy:</strong> Verify information against authoritative sources</li>
+                    <li><strong>Provide Transparency:</strong> Show where information came from</li>
+                </ul>
+
+                <h3>Cost and Efficiency Considerations</h3>
+                <p>RAG offers significant advantages in terms of operational efficiency:</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aspect</th>
+                            <th>Traditional Fine-Tuning</th>
+                            <th>RAG Approach</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Knowledge Updates</strong></td>
+                            <td>Requires full model retraining ($10K-$100K+)</td>
+                            <td>Simple document addition (minutes, minimal cost)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Computational Requirements</strong></td>
+                            <td>Massive GPU clusters for training</td>
+                            <td>Standard inference hardware</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Time to Deploy</strong></td>
+                            <td>Weeks to months</td>
+                            <td>Hours to days</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Knowledge Maintenance</strong></td>
+                            <td>Complex version management</td>
+                            <td>Straightforward document management</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Section 3: RAG Architecture Overview -->
+            <section id="rag-architecture" class="content-section">
+                <h2>3. RAG Architecture Overview</h2>
+
+                <h3>High-Level RAG System Architecture</h3>
+                <p>A RAG system consists of two main phases: an offline indexing phase and an online retrieval-generation phase.</p>
+
+                <div class="visual-container">
+                    <img src="imgs/rag_pipeline.png" alt="Complete RAG pipeline showing indexing phase with document chunking and embedding, and retrieval phase with query processing and context-aware generation">
+                    <div class="visual-caption">Figure 2: Complete RAG pipeline from document indexing to response generation</div>
+                </div>
+
+                <h3>Key Components</h3>
+
+                <h4>Indexing Phase (Offline)</h4>
+                <div class="flow-diagram">
+                    <div class="diagram-box">Document Ingestion</div>
+                    <span class="diagram-arrow">→</span>
+                    <div class="diagram-box">Text Chunking</div>
+                    <span class="diagram-arrow">→</span>
+                    <div class="diagram-box">Embedding Generation</div>
+                    <span class="diagram-arrow">→</span>
+                    <div class="diagram-box">Vector Storage</div>
+                </div>
+
+                <p>During the indexing phase:</p>
+                <ul>
+                    <li><strong>Documents are processed:</strong> Text extraction, cleaning, and preprocessing</li>
+                    <li><strong>Content is chunked:</strong> Breaking documents into manageable segments</li>
+                    <li><strong>Embeddings are created:</strong> Converting text chunks into vector representations</li>
+                    <li><strong>Vectors are stored:</strong> Indexing embeddings in a vector database for fast retrieval</li>
+                </ul>
+
+                <h4>Retrieval-Generation Phase (Online)</h4>
+                <div class="flow-diagram">
+                    <div class="diagram-box">User Query</div>
+                    <span class="diagram-arrow">→</span>
+                    <div class="diagram-box">Query Embedding</div>
+                    <span class="diagram-arrow">→</span>
+                    <div class="diagram-box">Similarity Search</div>
+                    <span class="diagram-arrow">→</span>
+                    <div class="diagram-box">Context Injection</div>
+                    <span class="diagram-arrow">→</span>
+                    <div class="diagram-box">LLM Generation</div>
+                </div>
+
+                <p>During the retrieval-generation phase:</p>
+                <ul>
+                    <li><strong>Query processing:</strong> Converting user questions into searchable embeddings</li>
+                    <li><strong>Similarity search:</strong> Finding the most relevant document chunks</li>
+                    <li><strong>Context assembly:</strong> Combining retrieved chunks into coherent context</li>
+                    <li><strong>Response generation:</strong> Using the LLM to create answers based on retrieved context</li>
+                </ul>
+
+                <h3>RAG vs Fine-tuning vs Prompt Engineering</h3>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Approach</th>
+                            <th>Knowledge Integration</th>
+                            <th>Update Complexity</th>
+                            <th>Best Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Fine-tuning</strong></td>
+                            <td>Embedded in model weights</td>
+                            <td>Requires retraining</td>
+                            <td>Domain-specific language patterns</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Prompt Engineering</strong></td>
+                            <td>Static context in prompts</td>
+                            <td>Manual prompt updates</td>
+                            <td>Fixed knowledge sets</td>
+                        </tr>
+                        <tr>
+                            <td><strong>RAG</strong></td>
+                            <td>Dynamic retrieval</td>
+                            <td>Document addition/update</td>
+                            <td>Large, changing knowledge bases</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="concept-section">
+                    <div class="concept-header">
+                        <h3 class="concept-title">Architectural Advantages of RAG</h3>
+                    </div>
+                    <ul>
+                        <li><strong>Scalability:</strong> Handle massive document collections without model size constraints</li>
+                        <li><strong>Flexibility:</strong> Easily add, remove, or modify knowledge sources</li>
+                        <li><strong>Transparency:</strong> Clear provenance and source attribution for generated content</li>
+                        <li><strong>Cost-Effectiveness:</strong> Avoid expensive model retraining cycles</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 4: Document Processing & Indexing Deep Dive -->
+            <section id="document-processing" class="content-section">
+                <h2>4. Document Processing & Indexing Deep Dive</h2>
+
+                <div class="visual-container">
+                    <img src="imgs/rag_document_processing.png" alt="Detailed document processing workflow showing ingestion, chunking strategies, embedding generation, and storage optimization">
+                    <div class="visual-caption">Figure 3: Comprehensive document processing pipeline with chunking strategies and optimization techniques</div>
+                </div>
+
+                <h3>Document Ingestion</h3>
+                <p>The first step in building a RAG system is ingesting and processing diverse document types:</p>
+
+                <h4>Supported File Formats</h4>
+                <ul>
+                    <li><strong>Text Documents:</strong> PDF, DOC/DOCX, TXT, RTF</li>
+                    <li><strong>Web Content:</strong> HTML, XML, Markdown</li>
+                    <li><strong>Structured Data:</strong> JSON, CSV, YAML</li>
+                    <li><strong>Presentations:</strong> PPT/PPTX</li>
+                    <li><strong>Spreadsheets:</strong> XLS/XLSX</li>
+                </ul>
+
+                <h4>Text Extraction and Preprocessing</h4>
+                <div class="implementation-box">
+                    <div class="implementation-title">Document Processing Pipeline</div>
+                    <ul>
+                        <li><strong>Text Extraction:</strong> Using libraries like PyPDF2, pdfplumber, python-docx</li>
+                        <li><strong>Content Cleaning:</strong> Removing headers, footers, page numbers, formatting artifacts</li>
+                        <li><strong>Language Detection:</strong> Identifying document language for appropriate processing</li>
+                        <li><strong>Structure Preservation:</strong> Maintaining headings, lists, and logical document hierarchy</li>
+                    </ul>
+                </div>
+
+                <h3>Text Chunking Strategies</h3>
+                <p>Effective chunking is crucial for RAG performance. The goal is to create semantically coherent segments that fit within context windows while maintaining meaningful boundaries.</p>
+
+                <h4>Fixed Size Chunking</h4>
+                <p>The simplest approach divides text into equal-sized chunks:</p>
+                <pre><code class="language-python">def fixed_size_chunking(text: str, chunk_size: int = 1000, overlap: int = 100) -> List[str]:
+    """Split text into fixed-size chunks with optional overlap."""
+    words = text.split()
+    chunks = []
+    
+    for i in range(0, len(words), chunk_size - overlap):
+        chunk_words = words[i:i + chunk_size]
+        if chunk_words:
+            chunks.append(' '.join(chunk_words))
+    
+    return chunks</code></pre>
+
+                <h4>Semantic Chunking</h4>
+                <p>More sophisticated approaches preserve semantic boundaries:</p>
+                <ul>
+                    <li><strong>Sentence-based:</strong> Split at sentence boundaries using NLP libraries</li>
+                    <li><strong>Paragraph-based:</strong> Maintain paragraph structure</li>
+                    <li><strong>Section-based:</strong> Split at headings and logical sections</li>
+                    <li><strong>Sliding Window:</strong> Create overlapping chunks to maintain context</li>
+                </ul>
+
+                <h4>Overlapping Windows</h4>
+                <p>Overlap strategies help maintain context across chunk boundaries:</p>
+                <pre><code class="language-python">def semantic_chunking(text: str, max_chunk_size: int = 1000, overlap_size: int = 150) -> List[str]:
+    """Create semantically aware chunks with overlap."""
+    import nltk
+    from nltk.tokenize import sent_tokenize
+    
+    sentences = sent_tokenize(text)
+    chunks = []
+    current_chunk = []
+    current_size = 0
+    
+    for sentence in sentences:
+        sentence_size = len(sentence.split())
+        
+        if current_size + sentence_size > max_chunk_size and current_chunk:
+            # Create chunk with overlap from previous chunk
+            chunks.append(' '.join(current_chunk))
+            
+            # Start new chunk with overlap
+            overlap_sentences = current_chunk[-2:] if len(current_chunk) > 2 else current_chunk
+            current_chunk = overlap_sentences + [sentence]
+            current_size = sum(len(s.split()) for s in current_chunk)
+        else:
+            current_chunk.append(sentence)
+            current_size += sentence_size
+    
+    if current_chunk:
+        chunks.append(' '.join(current_chunk))
+    
+    return chunks</code></pre>
+
+                <h3>Chunk Size Optimization</h3>
+                <p>Choosing the optimal chunk size involves balancing several factors:</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Chunk Size</th>
+                            <th>Advantages</th>
+                            <th>Disadvantages</th>
+                            <th>Best For</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Small (100-300 tokens)</strong></td>
+                            <td>High precision, specific matches</td>
+                            <td>May lose context, many irrelevant results</td>
+                            <td>Factual Q&A, specific lookups</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Medium (300-800 tokens)</strong></td>
+                            <td>Good balance of precision and context</td>
+                            <td>May split related concepts</td>
+                            <td>General purpose applications</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Large (800+ tokens)</strong></td>
+                            <td>Rich context, narrative preservation</td>
+                            <td>Lower precision, higher costs</td>
+                            <td>Complex reasoning, summarization</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Metadata Handling</h3>
+                <p>Rich metadata enhances retrieval effectiveness:</p>
+
+                <h4>Document-Level Metadata</h4>
+                <ul>
+                    <li><strong>Source Information:</strong> Filename, URL, author, creation date</li>
+                    <li><strong>Document Type:</strong> Technical manual, policy document, FAQ</li>
+                    <li><strong>Access Control:</strong> Permissions, visibility, security classifications</li>
+                    <li><strong>Content Categories:</strong> Department, topic, subject area</li>
+                </ul>
+
+                <h4>Chunk-Level Metadata</h4>
+                <ul>
+                    <li><strong>Position:</strong> Page number, section, paragraph index</li>
+                    <li><strong>Structure:</strong> Heading level, list item, table content</li>
+                    <li><strong>Context:</strong> Surrounding headings, document section</li>
+                    <li><strong>Quality Scores:</strong> Relevance, completeness, confidence</li>
+                </ul>
+
+                <div class="highlight-box">
+                    <div class="highlight-title">Optimization Best Practices</div>
+                    <ul>
+                        <li><strong>Preserve Structure:</strong> Maintain document hierarchy and formatting cues</li>
+                        <li><strong>Handle Multimodal Content:</strong> Process tables, images, and diagrams appropriately</li>
+                        <li><strong>Quality Control:</strong> Filter out low-quality or irrelevant content</li>
+                        <li><strong>Version Management:</strong> Track document updates and maintain consistency</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 5: Vector Embeddings & Similarity Search -->
+            <section id="vector-embeddings" class="content-section">
+                <h2>5. Vector Embeddings & Similarity Search</h2>
+
+                <div class="visual-container">
+                    <img src="imgs/rag_retrieval_process.png" alt="Vector embedding and similarity search process showing query embedding, similarity calculation, and ranked retrieval results">
+                    <div class="visual-caption">Figure 4: Vector embedding generation and similarity-based retrieval process</div>
+                </div>
+
+                <h3>Understanding Vector Embeddings</h3>
+                <p>Vector embeddings transform text into dense numerical representations that capture semantic meaning. These high-dimensional vectors enable mathematical operations on text, allowing us to compute semantic similarity and perform efficient retrieval.</p>
+
+                <div class="concept-section">
+                    <div class="concept-header">
+                        <h3 class="concept-title">Why Embeddings Work for RAG</h3>
+                    </div>
+                    <p>Embeddings solve the vocabulary mismatch problem by representing concepts rather than exact words. Queries like "automobile maintenance" can match documents about "car repair" because their embeddings are similar in vector space.</p>
+                </div>
+
+                <h3>Embedding Models</h3>
+                <p>Different embedding models offer various trade-offs between performance, speed, and specialization:</p>
+
+                <h4>General-Purpose Models</h4>
+                <ul>
+                    <li><strong>OpenAI text-embedding-ada-002:</strong> High quality, 1536 dimensions, API-based</li>
+                    <li><strong>Sentence Transformers (all-MiniLM-L6-v2):</strong> Lightweight, 384 dimensions, local deployment</li>
+                    <li><strong>Cohere Embed:</strong> Multilingual support, enterprise features</li>
+                </ul>
+
+                <h4>Domain-Specific Models</h4>
+                <ul>
+                    <li><strong>SciBERT:</strong> Scientific literature and technical documents</li>
+                    <li><strong>BioBERT:</strong> Medical and biomedical texts</li>
+                    <li><strong>FinBERT:</strong> Financial documents and reports</li>
+                    <li><strong>CodeBERT:</strong> Source code and technical documentation</li>
+                </ul>
+
+                <h4>Embedding Implementation Example</h4>
+                <pre><code class="language-python">from sentence_transformers import SentenceTransformer
+import numpy as np
+from typing import List
+
+class EmbeddingGenerator:
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        self.model = SentenceTransformer(model_name)
+        self.dimension = self.model.get_sentence_embedding_dimension()
+    
+    def embed_texts(self, texts: List[str]) -> np.ndarray:
+        """Generate embeddings for a list of texts."""
+        embeddings = self.model.encode(
+            texts,
+            convert_to_numpy=True,
+            normalize_embeddings=True,  # Important for cosine similarity
+            show_progress_bar=True
+        )
+        return embeddings
+    
+    def embed_single(self, text: str) -> np.ndarray:
+        """Generate embedding for a single text."""
+        return self.model.encode([text], normalize_embeddings=True)[0]</code></pre>
+
+                <h3>Vector Databases</h3>
+                <p>Vector databases are specialized systems optimized for storing and searching high-dimensional vectors:</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Database</th>
+                            <th>Type</th>
+                            <th>Best For</th>
+                            <th>Pros</th>
+                            <th>Cons</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Pinecone</strong></td>
+                            <td>Managed Cloud</td>
+                            <td>Production systems</td>
+                            <td>Fully managed, excellent performance</td>
+                            <td>Vendor lock-in, cost</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Chroma</strong></td>
+                            <td>Open Source</td>
+                            <td>Development, prototyping</td>
+                            <td>Easy to use, lightweight</td>
+                            <td>Limited enterprise features</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Weaviate</strong></td>
+                            <td>Open Source</td>
+                            <td>Complex applications</td>
+                            <td>Rich features, GraphQL API</td>
+                            <td>Complex setup</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Qdrant</strong></td>
+                            <td>Open Source</td>
+                            <td>High performance</td>
+                            <td>Rust-based, very fast</td>
+                            <td>Newer ecosystem</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Similarity Metrics</h3>
+                <p>Different similarity metrics serve different purposes in vector search:</p>
+
+                <h4>Cosine Similarity</h4>
+                <p>Most commonly used for text embeddings, measures angle between vectors:</p>
+                <pre><code class="language-python">def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
+    """Calculate cosine similarity between two vectors."""
+    dot_product = np.dot(vec1, vec2)
+    norm_product = np.linalg.norm(vec1) * np.linalg.norm(vec2)
+    return dot_product / norm_product
+
+# For normalized vectors, cosine similarity = dot product
+def fast_cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
+    """Fast cosine similarity for normalized vectors."""
+    return np.dot(vec1, vec2)</code></pre>
+
+                <h4>Other Distance Metrics</h4>
+                <ul>
+                    <li><strong>Euclidean Distance:</strong> Geometric distance, sensitive to vector magnitude</li>
+                    <li><strong>Dot Product:</strong> Raw similarity score, works well with normalized embeddings</li>
+                    <li><strong>Manhattan Distance:</strong> Sum of absolute differences, more robust to outliers</li>
+                </ul>
+
+                <h3>Indexing Algorithms for Scale</h3>
+                <p>For large-scale applications, approximate nearest neighbor algorithms provide fast retrieval:</p>
+
+                <h4>HNSW (Hierarchical Navigable Small World)</h4>
+                <ul>
+                    <li>Graph-based algorithm with excellent performance</li>
+                    <li>Fast query times with reasonable memory usage</li>
+                    <li>Good balance between accuracy and speed</li>
+                </ul>
+
+                <h4>IVF (Inverted File Index)</h4>
+                <ul>
+                    <li>Clusters vectors and searches within relevant clusters</li>
+                    <li>Memory efficient for very large datasets</li>
+                    <li>Configurable accuracy vs speed trade-offs</li>
+                </ul>
+
+                <h4>LSH (Locality-Sensitive Hashing)</h4>
+                <ul>
+                    <li>Hash-based approximate search</li>
+                    <li>Extremely fast but less accurate</li>
+                    <li>Good for real-time applications with relaxed precision requirements</li>
+                </ul>
+
+                <h3>Similarity Search Implementation</h3>
+                <pre><code class="language-python">import chromadb
+from chromadb.utils import embedding_functions
+
+class VectorRetriever:
+    def __init__(self, collection_name: str = "rag_documents"):
+        self.client = chromadb.Client()
+        self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+        
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            embedding_function=self.embedding_function
+        )
+    
+    def add_documents(self, documents: List[str], metadatas: List[dict], ids: List[str]):
+        """Add documents to the vector database."""
+        self.collection.add(
+            documents=documents,
+            metadatas=metadatas,
+            ids=ids
+        )
+    
+    def search(self, query: str, n_results: int = 5, where: dict = None) -> dict:
+        """Search for similar documents."""
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=n_results,
+            where=where  # Metadata filtering
+        )
+        
+        return {
+            'documents': results['documents'][0],
+            'distances': results['distances'][0],
+            'metadatas': results['metadatas'][0],
+            'ids': results['ids'][0]
+        }
+    
+    def search_with_score_threshold(self, query: str, threshold: float = 0.7, n_results: int = 10) -> dict:
+        """Search with minimum similarity threshold."""
+        results = self.search(query, n_results=n_results)
+        
+        # Filter by similarity score (1 - distance for cosine similarity)
+        filtered_results = {
+            'documents': [],
+            'distances': [],
+            'metadatas': [],
+            'ids': []
+        }
+        
+        for i, distance in enumerate(results['distances']):
+            similarity = 1 - distance
+            if similarity >= threshold:
+                filtered_results['documents'].append(results['documents'][i])
+                filtered_results['distances'].append(distance)
+                filtered_results['metadatas'].append(results['metadatas'][i])
+                filtered_results['ids'].append(results['ids'][i])
+        
+        return filtered_results</code></pre>
+
+                <div class="highlight-box">
+                    <div class="highlight-title">Performance Optimization Tips</div>
+                    <ul>
+                        <li><strong>Batch Processing:</strong> Generate embeddings in batches for efficiency</li>
+                        <li><strong>Caching:</strong> Cache frequently accessed embeddings</li>
+                        <li><strong>Quantization:</strong> Use lower precision for storage and speed</li>
+                        <li><strong>Metadata Filtering:</strong> Combine vector search with metadata filters</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 6: Advanced Retrieval Strategies -->
+            <section id="advanced-retrieval" class="content-section">
+                <h2>6. Advanced Retrieval Strategies</h2>
+
+                <h3>Beyond Simple Similarity Search</h3>
+                <p>While basic vector similarity search forms the foundation of RAG, advanced techniques can significantly improve retrieval quality and relevance:</p>
+
+                <h3>Hybrid Search</h3>
+                <p>Hybrid search combines semantic vector search with traditional keyword-based methods to capture both semantic and lexical relevance:</p>
+
+                <h4>Implementation Approach</h4>
+                <pre><code class="language-python">from rank_bm25 import BM25Okapi
+import numpy as np
+
+class HybridRetriever:
+    def __init__(self, documents: List[str], alpha: float = 0.7):
+        self.documents = documents
+        self.alpha = alpha  # Weight for semantic search (1-alpha for keyword search)
+        
+        # Initialize semantic search
+        self.vector_retriever = VectorRetriever()
+        
+        # Initialize keyword search (BM25)
+        tokenized_docs = [doc.split() for doc in documents]
+        self.bm25 = BM25Okapi(tokenized_docs)
+        
+        # Add documents to vector database
+        doc_ids = [f"doc_{i}" for i in range(len(documents))]
+        self.vector_retriever.add_documents(documents, [{}] * len(documents), doc_ids)
+    
+    def hybrid_search(self, query: str, n_results: int = 5) -> List[dict]:
+        """Combine semantic and keyword search results."""
+        # Semantic search
+        semantic_results = self.vector_retriever.search(query, n_results=n_results*2)
+        semantic_scores = {doc_id: 1 - distance for doc_id, distance in 
+                          zip(semantic_results['ids'], semantic_results['distances'])}
+        
+        # Keyword search
+        tokenized_query = query.split()
+        keyword_scores = self.bm25.get_scores(tokenized_query)
+        
+        # Combine scores
+        combined_scores = []
+        for i, doc in enumerate(self.documents):
+            doc_id = f"doc_{i}"
+            
+            # Normalize scores to [0, 1]
+            semantic_score = semantic_scores.get(doc_id, 0)
+            keyword_score = keyword_scores[i] / max(keyword_scores) if max(keyword_scores) > 0 else 0
+            
+            # Weighted combination
+            combined_score = self.alpha * semantic_score + (1 - self.alpha) * keyword_score
+            
+            combined_scores.append({
+                'document': doc,
+                'doc_id': doc_id,
+                'combined_score': combined_score,
+                'semantic_score': semantic_score,
+                'keyword_score': keyword_score
+            })
+        
+        # Sort by combined score and return top results
+        combined_scores.sort(key=lambda x: x['combined_score'], reverse=True)
+        return combined_scores[:n_results]</code></pre>
+
+                <h3>Re-ranking</h3>
+                <p>Re-ranking improves the initial retrieval results using more sophisticated models:</p>
+
+                <h4>Cross-Encoder Re-ranking</h4>
+                <p>Cross-encoders process query-document pairs jointly for better relevance assessment:</p>
+                <pre><code class="language-python">from sentence_transformers import CrossEncoder
+
+class ReRankingRetriever:
+    def __init__(self, base_retriever, rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"):
+        self.base_retriever = base_retriever
+        self.reranker = CrossEncoder(rerank_model)
+    
+    def retrieve_and_rerank(self, query: str, initial_k: int = 20, final_k: int = 5) -> List[dict]:
+        """Retrieve initial results and re-rank for better relevance."""
+        # Initial retrieval (cast wider net)
+        initial_results = self.base_retriever.search(query, n_results=initial_k)
+        
+        # Prepare query-document pairs for re-ranking
+        pairs = [(query, doc) for doc in initial_results['documents']]
+        
+        # Re-rank using cross-encoder
+        rerank_scores = self.reranker.predict(pairs)
+        
+        # Combine with original results and sort by re-rank scores
+        reranked_results = []
+        for i, score in enumerate(rerank_scores):
+            reranked_results.append({
+                'document': initial_results['documents'][i],
+                'original_score': 1 - initial_results['distances'][i],
+                'rerank_score': score,
+                'metadata': initial_results['metadatas'][i],
+                'id': initial_results['ids'][i]
+            })
+        
+        # Sort by re-rank score and return top k
+        reranked_results.sort(key=lambda x: x['rerank_score'], reverse=True)
+        return reranked_results[:final_k]</code></pre>
+
+                <h3>Multi-step Retrieval</h3>
+                <p>Advanced RAG systems can perform multiple retrieval steps to gather comprehensive information:</p>
+
+                <h4>Query Expansion</h4>
+                <p>Expand the original query to capture related concepts:</p>
+                <pre><code class="language-python">class QueryExpansionRetriever:
+    def __init__(self, base_retriever, llm):
+        self.base_retriever = base_retriever
+        self.llm = llm
+    
+    def expand_query(self, query: str) -> List[str]:
+        """Generate related queries using LLM."""
+        expansion_prompt = f"""
+        Given this query: "{query}"
+        
+        Generate 3-5 related queries that might help find relevant information:
+        - Synonymous phrasings
+        - Related concepts
+        - More specific aspects
+        
+        Format as a numbered list:
+        """
+        
+        response = self.llm.complete(expansion_prompt)
+        # Parse response to extract expanded queries
+        expanded_queries = self._parse_expanded_queries(response)
+        return [query] + expanded_queries
+    
+    def multi_query_retrieval(self, query: str, k_per_query: int = 3) -> List[dict]:
+        """Retrieve using multiple related queries."""
+        expanded_queries = self.expand_query(query)
+        all_results = []
+        seen_docs = set()
+        
+        for q in expanded_queries:
+            results = self.base_retriever.search(q, n_results=k_per_query)
+            
+            for i, doc in enumerate(results['documents']):
+                if doc not in seen_docs:
+                    all_results.append({
+                        'document': doc,
+                        'query_used': q,
+                        'score': 1 - results['distances'][i],
+                        'metadata': results['metadatas'][i]
+                    })
+                    seen_docs.add(doc)
+        
+        # Sort by score and remove duplicates
+        all_results.sort(key=lambda x: x['score'], reverse=True)
+        return all_results</code></pre>
+
+                <h4>Iterative Refinement</h4>
+                <p>Use initial results to refine subsequent searches:</p>
+                <ul>
+                    <li><strong>Pseudo Relevance Feedback:</strong> Extract terms from top results to expand the query</li>
+                    <li><strong>Interactive Refinement:</strong> Allow users to mark relevant/irrelevant results</li>
+                    <li><strong>Context-Aware Search:</strong> Use conversation history to refine searches</li>
+                </ul>
+
+                <h3>Context Window Management</h3>
+                <p>Optimizing how retrieved content fits within LLM context windows:</p>
+
+                <h4>Token Optimization</h4>
+                <pre><code class="language-python">import tiktoken
+
+class ContextWindowManager:
+    def __init__(self, model_name: str = "gpt-3.5-turbo", max_context_tokens: int = 3000):
+        self.encoding = tiktoken.encoding_for_model(model_name)
+        self.max_context_tokens = max_context_tokens
+    
+    def count_tokens(self, text: str) -> int:
+        """Count tokens in text."""
+        return len(self.encoding.encode(text))
+    
+    def optimize_context(self, query: str, retrieved_docs: List[dict], system_prompt: str = "") -> str:
+        """Fit retrieved documents within context window."""
+        # Reserve space for query, system prompt, and response
+        reserved_tokens = (
+            self.count_tokens(query) + 
+            self.count_tokens(system_prompt) + 
+            500  # Reserve for response
+        )
+        
+        available_tokens = self.max_context_tokens - reserved_tokens
+        
+        # Sort documents by relevance score
+        sorted_docs = sorted(retrieved_docs, key=lambda x: x['score'], reverse=True)
+        
+        context_parts = []
+        used_tokens = 0
+        
+        for doc in sorted_docs:
+            doc_tokens = self.count_tokens(doc['document'])
+            
+            if used_tokens + doc_tokens <= available_tokens:
+                # Add full document
+                context_parts.append(doc['document'])
+                used_tokens += doc_tokens
+            elif used_tokens < available_tokens:
+                # Partially include document
+                remaining_tokens = available_tokens - used_tokens
+                truncated_doc = self._truncate_to_tokens(doc['document'], remaining_tokens)
+                context_parts.append(truncated_doc + "...")
+                break
+            else:
+                break
+        
+        return "\n\n---\n\n".join(context_parts)
+    
+    def _truncate_to_tokens(self, text: str, max_tokens: int) -> str:
+        """Truncate text to fit within token limit."""
+        tokens = self.encoding.encode(text)
+        if len(tokens) <= max_tokens:
+            return text
+        
+        truncated_tokens = tokens[:max_tokens]
+        return self.encoding.decode(truncated_tokens)</code></pre>
+
+                <h4>Context Compression Techniques</h4>
+                <ul>
+                    <li><strong>Extractive Summarization:</strong> Extract key sentences from retrieved documents</li>
+                    <li><strong>Abstractive Summarization:</strong> Generate concise summaries of retrieved content</li>
+                    <li><strong>Key Information Extraction:</strong> Extract specific facts and entities</li>
+                    <li><strong>Hierarchical Context:</strong> Provide context at different levels of detail</li>
+                </ul>
+
+                <div class="concept-section">
+                    <div class="concept-header">
+                        <h3 class="concept-title">Advanced Retrieval Best Practices</h3>
+                    </div>
+                    <ul>
+                        <li><strong>Experiment with Combinations:</strong> Test different retrieval strategies for your domain</li>
+                        <li><strong>Monitor Performance:</strong> Track retrieval quality metrics and user feedback</li>
+                        <li><strong>Cache Intelligently:</strong> Cache expensive operations like re-ranking</li>
+                        <li><strong>Handle Edge Cases:</strong> Plan for queries with no relevant results</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 7: Generation with Retrieved Context -->
+            <section id="generation-context" class="content-section">
+                <h2>7. Generation with Retrieved Context</h2>
+
+                <div class="visual-container">
+                    <img src="imgs/rag_generation_context.png" alt="Context integration and generation process showing prompt engineering, context ranking, and response synthesis with source attribution">
+                    <div class="visual-caption">Figure 5: Context integration and generation process with prompt engineering and source attribution</div>
+                </div>
+
+                <h3>Prompt Engineering for RAG</h3>
+                <p>Effective prompt design is crucial for generating high-quality responses from retrieved context. The prompt must clearly instruct the model on how to use the provided information while maintaining accuracy and relevance.</p>
+
+                <h4>Context Injection Patterns</h4>
+                <p>Different patterns for incorporating retrieved context into prompts:</p>
+
+                <pre><code class="language-python">class RAGPromptTemplates:
+    
+    BASIC_QA_TEMPLATE = """
+Context Information:
+{context}
+
+Question: {query}
+
+Based on the provided context, please answer the question. If the context doesn't contain enough information to answer the question, say so clearly.
+
+Answer:"""
+
+    DETAILED_INSTRUCTION_TEMPLATE = """
+You are a helpful assistant that answers questions based on provided context.
+
+Instructions:
+- Use only the information provided in the context below
+- If the context doesn't contain enough information, say "I don't have enough information to answer this question"
+- Always cite which part of the context you're using
+- Be concise but comprehensive in your answer
+
+Context:
+{context}
+
+Question: {query}
+
+Answer:"""
+
+    CHAIN_OF_THOUGHT_TEMPLATE = """
+Context:
+{context}
+
+Question: {query}
+
+Let me think through this step by step:
+
+1. First, let me identify what information I have in the context that relates to this question.
+2. Then I'll analyze how this information answers the question.
+3. Finally, I'll provide a clear, well-supported answer.
+
+Analysis and Answer:"""
+
+    COMPARATIVE_TEMPLATE = """
+Available Information:
+{context}
+
+Question: {query}
+
+Based on the provided information, I will:
+1. Identify relevant information from the context
+2. Compare different aspects if multiple sources are provided
+3. Synthesize a comprehensive answer
+4. Note any limitations or gaps in the available information
+
+Response:"""</code></pre>
+
+                <h3>Context Integration Strategies</h3>
+                <p>How to effectively combine multiple retrieved documents into coherent context:</p>
+
+                <h4>Ranking and Filtering</h4>
+                <pre><code class="language-python">class ContextProcessor:
+    def __init__(self, max_context_length: int = 4000):
+        self.max_context_length = max_context_length
+    
+    def process_retrieved_context(self, query: str, retrieved_docs: List[dict]) -> dict:
+        """Process and optimize retrieved context for generation."""
+        
+        # 1. Rank by relevance score
+        ranked_docs = sorted(retrieved_docs, key=lambda x: x.get('score', 0), reverse=True)
+        
+        # 2. Remove duplicates and near-duplicates
+        unique_docs = self._remove_duplicates(ranked_docs, similarity_threshold=0.85)
+        
+        # 3. Filter by relevance threshold
+        relevant_docs = [doc for doc in unique_docs if doc.get('score', 0) > 0.5]
+        
+        # 4. Optimize context length
+        optimized_context = self._optimize_context_length(relevant_docs)
+        
+        # 5. Structure the context
+        structured_context = self._structure_context(optimized_context)
+        
+        return {
+            'context': structured_context,
+            'sources': [doc.get('metadata', {}) for doc in relevant_docs[:5]],
+            'confidence': self._calculate_confidence(relevant_docs)
+        }
+    
+    def _structure_context(self, docs: List[dict]) -> str:
+        """Structure multiple documents into coherent context."""
+        context_parts = []
+        
+        for i, doc in enumerate(docs, 1):
+            # Add source attribution
+            source = doc.get('metadata', {}).get('source', f'Document {i}')
+            context_part = f"Source {i} ({source}):\n{doc['document']}"
+            context_parts.append(context_part)
+        
+        return "\n\n" + "="*50 + "\n\n".join(context_parts)
+    
+    def _remove_duplicates(self, docs: List[dict], similarity_threshold: float = 0.85) -> List[dict]:
+        """Remove duplicate or very similar documents."""
+        from sentence_transformers import SentenceTransformer
+        
+        if len(docs) <= 1:
+            return docs
+            
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        embeddings = model.encode([doc['document'] for doc in docs])
+        
+        unique_docs = [docs[0]]  # Always keep the highest-ranked document
+        unique_embeddings = [embeddings[0]]
+        
+        for i, doc in enumerate(docs[1:], 1):
+            # Check similarity with all unique documents
+            similarities = np.dot(unique_embeddings, embeddings[i])
+            
+            if max(similarities) < similarity_threshold:
+                unique_docs.append(doc)
+                unique_embeddings.append(embeddings[i])
+        
+        return unique_docs</code></pre>
+
+                <h4>Deduplication</h4>
+                <p>Strategies to handle redundant information in retrieved context:</p>
+                <ul>
+                    <li><strong>Semantic Deduplication:</strong> Remove semantically similar chunks</li>
+                    <li><strong>Extractive Deduplication:</strong> Identify and merge overlapping content</li>
+                    <li><strong>Source-Based Deduplication:</strong> Prefer newer or more authoritative sources</li>
+                </ul>
+
+                <h3>Citation and Source Attribution</h3>
+                <p>Providing transparency and traceability in RAG responses:</p>
+
+                <h4>Citation-Aware Generation</h4>
+                <pre><code class="language-python">class CitationAwareRAG:
+    def __init__(self, llm, retriever):
+        self.llm = llm
+        self.retriever = retriever
+    
+    def generate_with_citations(self, query: str) -> dict:
+        """Generate response with proper citations."""
+        # Retrieve relevant documents
+        retrieved_docs = self.retriever.search(query, n_results=5)
+        
+        # Create numbered context with source tracking
+        context_parts = []
+        source_map = {}
+        
+        for i, doc in enumerate(retrieved_docs['documents']):
+            source_num = i + 1
+            source_info = retrieved_docs['metadatas'][i]
+            source_map[source_num] = source_info
+            
+            context_part = f"[{source_num}] {doc}"
+            context_parts.append(context_part)
+        
+        context = "\n\n".join(context_parts)
+        
+        # Citation-aware prompt
+        citation_prompt = f"""
+Context (with source numbers):
+{context}
+
+Question: {query}
+
+Instructions:
+- Answer the question using the provided context
+- Always include citations in your response using [1], [2], etc.
+- Only cite sources that are directly relevant to each statement
+- If information comes from multiple sources, cite all relevant ones
+
+Answer:"""
+
+        # Generate response
+        response = self.llm.complete(citation_prompt)
+        
+        # Extract and validate citations
+        validated_response = self._validate_citations(response, source_map)
+        
+        return {
+            'answer': validated_response,
+            'sources': source_map,
+            'context_used': context
+        }
+    
+    def _validate_citations(self, response: str, source_map: dict) -> str:
+        """Validate and format citations in the response."""
+        import re
+        
+        # Find all citation patterns [1], [2], etc.
+        citations = re.findall(r'\[(\d+)\]', response)
+        
+        # Ensure all citations are valid
+        valid_citations = []
+        for citation in citations:
+            if int(citation) in source_map:
+                valid_citations.append(citation)
+        
+        return response</code></pre>
+
+                <h3>Response Quality Control</h3>
+                <p>Ensuring generated responses meet quality standards:</p>
+
+                <h4>Relevance Filtering</h4>
+                <pre><code class="language-python">class ResponseQualityFilter:
+    def __init__(self):
+        from sentence_transformers import CrossEncoder
+        self.relevance_model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+    
+    def assess_response_quality(self, query: str, response: str, context: str) -> dict:
+        """Assess the quality of a generated response."""
+        
+        # 1. Relevance to query
+        query_relevance = self.relevance_model.predict([(query, response)])
+        
+        # 2. Grounding in context
+        context_grounding = self.relevance_model.predict([(context, response)])
+        
+        # 3. Check for hallucination indicators
+        hallucination_score = self._detect_hallucination(response, context)
+        
+        # 4. Response completeness
+        completeness_score = self._assess_completeness(query, response)
+        
+        return {
+            'query_relevance': float(query_relevance[0]),
+            'context_grounding': float(context_grounding[0]),
+            'hallucination_risk': hallucination_score,
+            'completeness': completeness_score,
+            'overall_quality': self._calculate_overall_quality(
+                query_relevance[0], context_grounding[0], 
+                hallucination_score, completeness_score
+            )
+        }
+    
+    def _detect_hallucination(self, response: str, context: str) -> float:
+        """Detect potential hallucinations in the response."""
+        # Check for specific claims in response that aren't supported by context
+        # This is a simplified version - production systems would use more sophisticated methods
+        
+        response_sentences = response.split('.')
+        hallucination_indicators = []
+        
+        for sentence in response_sentences:
+            sentence = sentence.strip()
+            if len(sentence) < 10:
+                continue
+                
+            # Check if sentence content is supported by context
+            support_score = self.relevance_model.predict([(context, sentence)])[0]
+            hallucination_indicators.append(1 - support_score if support_score > 0 else 1)
+        
+        return np.mean(hallucination_indicators) if hallucination_indicators else 0</code></pre>
+
+                <h4>Hallucination Detection</h4>
+                <p>Methods to identify when the model generates information not supported by the context:</p>
+                <ul>
+                    <li><strong>Entailment Checking:</strong> Verify response claims are entailed by the context</li>
+                    <li><strong>Fact Verification:</strong> Cross-check specific facts against reliable sources</li>
+                    <li><strong>Confidence Scoring:</strong> Use model confidence to identify uncertain responses</li>
+                    <li><strong>Human Feedback:</strong> Incorporate user feedback to improve detection</li>
+                </ul>
+
+                <div class="implementation-box">
+                    <div class="implementation-title">Complete Generation Pipeline</div>
+                    <pre><code class="language-python">class RAGGenerator:
+    def __init__(self, llm, retriever, quality_filter):
+        self.llm = llm
+        self.retriever = retriever
+        self.quality_filter = quality_filter
+        self.context_processor = ContextProcessor()
+    
+    def generate_response(self, query: str, max_retries: int = 2) -> dict:
+        """Generate high-quality RAG response with quality control."""
+        
+        for attempt in range(max_retries + 1):
+            # 1. Retrieve relevant context
+            retrieved_docs = self.retriever.search(query, n_results=8)
+            
+            # 2. Process and optimize context
+            context_data = self.context_processor.process_retrieved_context(query, retrieved_docs)
+            
+            # 3. Generate response
+            prompt = self._create_prompt(query, context_data['context'])
+            response = self.llm.complete(prompt)
+            
+            # 4. Quality assessment
+            quality_metrics = self.quality_filter.assess_response_quality(
+                query, response, context_data['context']
+            )
+            
+            # 5. Check if response meets quality threshold
+            if quality_metrics['overall_quality'] > 0.7:
+                return {
+                    'answer': response,
+                    'sources': context_data['sources'],
+                    'quality_metrics': quality_metrics,
+                    'context_confidence': context_data['confidence']
+                }
+        
+        # If all attempts failed quality check
+        return {
+            'answer': "I don't have enough reliable information to answer this question accurately.",
+            'sources': [],
+            'quality_metrics': {'overall_quality': 0},
+            'context_confidence': 0
+        }</code></pre>
+                </div>
+            </section>
+
+            <!-- Section 8: RAG Implementation - Practical Examples -->
+            <section id="rag-implementation" class="content-section">
+                <h2>8. RAG Implementation - Practical Examples</h2>
+
+                <h3>Complete RAG System Architecture</h3>
+                <p>Let's build a comprehensive RAG system that combines all the concepts we've covered:</p>
+
+                <pre><code class="language-python">from typing import List, Dict, Any, Optional
+import os
+from pathlib import Path
+import json
+import sqlite3
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import chromadb
+from litellm import completion
+
+class ComprehensiveRAGSystem:
+    def __init__(self, 
+                 embedding_model: str = "all-MiniLM-L6-v2",
+                 llm_model: str = "groq/mixtral-8x7b-32768",
+                 collection_name: str = "rag_knowledge_base"):
+        
+        # Initialize components
+        self.embedding_model = SentenceTransformer(embedding_model)
+        self.llm_model = llm_model
+        
+        # Vector database setup
+        self.chroma_client = chromadb.Client()
+        self.collection = self.chroma_client.get_or_create_collection(
+            name=collection_name,
+            embedding_function=chromadb.utils.embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=embedding_model
+            )
+        )
+        
+        # Document processing
+        self.chunk_size = 800
+        self.chunk_overlap = 100
+        
+        print(f"RAG System initialized with {embedding_model} embeddings and {llm_model} generation")
+    
+    def process_documents(self, documents: List[Dict[str, Any]]) -> None:
+        """
+        Process and index a collection of documents.
+        
+        Args:
+            documents: List of dicts with 'content', 'title', 'source', 'metadata' keys
+        """
+        all_chunks = []
+        all_metadatas = []
+        all_ids = []
+        
+        for doc_idx, doc in enumerate(documents):
+            # Extract document information
+            content = doc.get('content', '')
+            title = doc.get('title', f'Document {doc_idx}')
+            source = doc.get('source', 'Unknown')
+            metadata = doc.get('metadata', {})
+            
+            # Chunk the document
+            chunks = self._chunk_text(content)
+            
+            for chunk_idx, chunk in enumerate(chunks):
+                chunk_id = f"doc_{doc_idx}_chunk_{chunk_idx}"
+                
+                chunk_metadata = {
+                    'title': title,
+                    'source': source,
+                    'chunk_index': chunk_idx,
+                    'total_chunks': len(chunks),
+                    **metadata
+                }
+                
+                all_chunks.append(chunk)
+                all_metadatas.append(chunk_metadata)
+                all_ids.append(chunk_id)
+        
+        # Add to vector database
+        if all_chunks:
+            self.collection.add(
+                documents=all_chunks,
+                metadatas=all_metadatas,
+                ids=all_ids
+            )
+            
+        print(f"Processed {len(documents)} documents into {len(all_chunks)} chunks")
+    
+    def _chunk_text(self, text: str) -> List[str]:
+        """Split text into overlapping chunks."""
+        words = text.split()
+        chunks = []
+        
+        for i in range(0, len(words), self.chunk_size - self.chunk_overlap):
+            chunk_words = words[i:i + self.chunk_size]
+            if chunk_words:
+                chunk = ' '.join(chunk_words)
+                chunks.append(chunk)
+                
+                # Break if we've reached the end
+                if i + self.chunk_size >= len(words):
+                    break
+        
+        return chunks if chunks else [text]
+    
+    def retrieve_context(self, query: str, k: int = 5) -> Dict[str, Any]:
+        """Retrieve relevant context for a query."""
+        # Basic retrieval
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=min(k, 20)  # Retrieve more initially for re-ranking
+        )
+        
+        if not results['documents'][0]:
+            return {
+                'context': "",
+                'sources': [],
+                'confidence': 0.0
+            }
+        
+        # Process results
+        retrieved_chunks = []
+        for i in range(len(results['documents'][0])):
+            retrieved_chunks.append({
+                'content': results['documents'][0][i],
+                'metadata': results['metadatas'][0][i],
+                'similarity': 1 - results['distances'][0][i],  # Convert distance to similarity
+                'id': results['ids'][0][i]
+            })
+        
+        # Sort by similarity and take top k
+        retrieved_chunks.sort(key=lambda x: x['similarity'], reverse=True)
+        top_chunks = retrieved_chunks[:k]
+        
+        # Build context string
+        context_parts = []
+        sources = []
+        
+        for i, chunk in enumerate(top_chunks, 1):
+            source_info = f"{chunk['metadata'].get('title', 'Unknown')} ({chunk['metadata'].get('source', 'Unknown')})"
+            context_parts.append(f"[{i}] {chunk['content']}")
+            sources.append({
+                'number': i,
+                'title': chunk['metadata'].get('title'),
+                'source': chunk['metadata'].get('source'),
+                'similarity': chunk['similarity']
+            })
+        
+        context = "\n\n".join(context_parts)
+        avg_confidence = np.mean([chunk['similarity'] for chunk in top_chunks])
+        
+        return {
+            'context': context,
+            'sources': sources,
+            'confidence': float(avg_confidence)
+        }
+    
+    def generate_response(self, query: str, max_context_chunks: int = 5) -> Dict[str, Any]:
+        """Generate a complete RAG response."""
+        
+        # Retrieve context
+        context_data = self.retrieve_context(query, k=max_context_chunks)
+        
+        if not context_data['context']:
+            return {
+                'answer': "I don't have any relevant information to answer this question.",
+                'sources': [],
+                'confidence': 0.0,
+                'context_used': ""
+            }
+        
+        # Create prompt
+        prompt = self._create_generation_prompt(query, context_data['context'])
+        
+        try:
+            # Generate response using LiteLLM
+            response = completion(
+                model=self.llm_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that answers questions based on provided context. Always cite your sources using [1], [2], etc."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.1,  # Lower temperature for more consistent responses
+                max_tokens=1000
+            )
+            
+            answer = response.choices[0].message.content
+            
+            return {
+                'answer': answer,
+                'sources': context_data['sources'],
+                'confidence': context_data['confidence'],
+                'context_used': context_data['context']
+            }
+            
+        except Exception as e:
+            return {
+                'answer': f"Error generating response: {str(e)}",
+                'sources': context_data['sources'],
+                'confidence': 0.0,
+                'context_used': context_data['context']
+            }
+    
+    def _create_generation_prompt(self, query: str, context: str) -> str:
+        """Create the prompt for response generation."""
+        return f"""Based on the following context information, please answer the question.
+
+Context Information:
+{context}
+
+Question: {query}
+
+Instructions:
+- Use only the information provided in the context above
+- Cite your sources using the numbers in brackets [1], [2], etc.
+- If the context doesn't contain enough information to answer the question completely, say so clearly
+- Be accurate and concise in your response
+
+Answer:"""
+
+# Usage example and demonstration
+def demonstrate_rag_system():
+    """Demonstrate the RAG system with sample documents."""
+    
+    # Sample documents
+    sample_documents = [
+        {
+            'title': 'Python Programming Best Practices',
+            'source': 'Internal Documentation',
+            'content': '''
+            Python programming best practices include following PEP 8 style guidelines,
+            writing comprehensive docstrings, using type hints for better code clarity,
+            implementing proper error handling with try-except blocks, and organizing
+            code into modules and packages. Version control with Git is essential,
+            and automated testing with pytest ensures code reliability. Virtual
+            environments help manage dependencies, and code formatting tools like
+            Black and linting tools like pylint improve code quality.
+            ''',
+            'metadata': {'category': 'programming', 'language': 'python'}
+        },
+        {
+            'title': 'Machine Learning Model Deployment',
+            'source': 'ML Engineering Guide',
+            'content': '''
+            Machine learning model deployment involves several key steps: model
+            serialization using formats like pickle or ONNX, containerization with
+            Docker for consistent environments, API development using FastAPI or
+            Flask for model serving, monitoring for performance and drift detection,
+            and scaling with tools like Kubernetes. CI/CD pipelines automate the
+            deployment process, while A/B testing validates model improvements
+            in production environments.
+            ''',
+            'metadata': {'category': 'machine-learning', 'topic': 'deployment'}
+        },
+        {
+            'title': 'Database Optimization Techniques',
+            'source': 'Database Administration Manual',
+            'content': '''
+            Database optimization techniques include proper indexing strategies,
+            query optimization through EXPLAIN plans, connection pooling to manage
+            database connections efficiently, data partitioning for large tables,
+            regular statistics updates, and monitoring slow queries. Normalization
+            reduces data redundancy, while denormalization can improve read
+            performance. Caching strategies and read replicas help distribute
+            load and improve response times.
+            ''',
+            'metadata': {'category': 'database', 'topic': 'optimization'}
+        }
+    ]
+    
+    # Initialize RAG system
+    rag_system = ComprehensiveRAGSystem()
+    
+    # Process documents
+    print("Processing documents...")
+    rag_system.process_documents(sample_documents)
+    
+    # Example queries
+    queries = [
+        "What are Python programming best practices?",
+        "How do you deploy machine learning models?",
+        "What techniques can optimize database performance?",
+        "How do you use Docker in ML deployment?"
+    ]
+    
+    print("\nDemo Queries and Responses:")
+    print("=" * 50)
+    
+    for query in queries:
+        print(f"\nQuery: {query}")
+        print("-" * 30)
+        
+        response = rag_system.generate_response(query)
+        
+        print(f"Answer: {response['answer']}")
+        print(f"Confidence: {response['confidence']:.2f}")
+        print("Sources used:")
+        for source in response['sources']:
+            print(f"  [{source['number']}] {source['title']} - {source['source']} (similarity: {source['similarity']:.2f})")
+
+# Run demonstration
+if __name__ == "__main__":
+    demonstrate_rag_system()</code></pre>
+
+                <h3>Error Handling and Robustness</h3>
+                <p>Production RAG systems need comprehensive error handling:</p>
+
+                <pre><code class="language-python">class RobustRAGSystem(ComprehensiveRAGSystem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_retries = 3
+        self.fallback_responses = {
+            'no_context': "I don't have enough information to answer this question accurately.",
+            'api_error': "I'm experiencing technical difficulties. Please try again later.",
+            'timeout': "The request timed out. Please try with a more specific question."
+        }
+    
+    def generate_response_with_fallbacks(self, query: str) -> Dict[str, Any]:
+        """Generate response with comprehensive error handling."""
+        
+        for attempt in range(self.max_retries):
+            try:
+                # Attempt normal generation
+                response = self.generate_response(query)
+                
+                # Validate response quality
+                if self._validate_response(response):
+                    return response
+                    
+            except Exception as e:
+                print(f"Attempt {attempt + 1} failed: {str(e)}")
+                
+                if attempt == self.max_retries - 1:
+                    # Final attempt failed, return fallback
+                    return {
+                        'answer': self.fallback_responses['api_error'],
+                        'sources': [],
+                        'confidence': 0.0,
+                        'context_used': "",
+                        'error': str(e)
+                    }
+                
+                # Wait before retry
+                import time
+                time.sleep(2 ** attempt)  # Exponential backoff
+        
+        return {
+            'answer': self.fallback_responses['api_error'],
+            'sources': [],
+            'confidence': 0.0,
+            'context_used': ""
+        }
+    
+    def _validate_response(self, response: Dict[str, Any]) -> bool:
+        """Validate response quality."""
+        # Check if we have a meaningful response
+        if not response['answer'] or response['confidence'] < 0.3:
+            return False
+            
+        # Check for minimum response length
+        if len(response['answer'].strip()) < 10:
+            return False
+            
+        # Check if response contains error indicators
+        error_indicators = ['error', 'failed', 'unable to', 'cannot process']
+        answer_lower = response['answer'].lower()
+        
+        if any(indicator in answer_lower for indicator in error_indicators):
+            return False
+            
+        return True</code></pre>
+
+                <h3>Monitoring and Logging</h3>
+                <p>Essential for production RAG systems:</p>
+
+                <pre><code class="language-python">import logging
+from datetime import datetime
+import json
+
+class MonitoredRAGSystem(RobustRAGSystem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Setup logging
+        self.logger = logging.getLogger('RAGSystem')
+        self.logger.setLevel(logging.INFO)
+        
+        # Create file handler
+        handler = logging.FileHandler('rag_system.log')
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        
+        # Metrics collection
+        self.metrics = {
+            'queries_processed': 0,
+            'successful_responses': 0,
+            'failed_responses': 0,
+            'average_confidence': 0.0,
+            'average_response_time': 0.0
+        }
+    
+    def generate_response_with_monitoring(self, query: str) -> Dict[str, Any]:
+        """Generate response with full monitoring."""
+        start_time = datetime.now()
+        
+        try:
+            self.logger.info(f"Processing query: {query}")
+            
+            response = self.generate_response_with_fallbacks(query)
+            
+            # Calculate response time
+            response_time = (datetime.now() - start_time).total_seconds()
+            
+            # Update metrics
+            self.metrics['queries_processed'] += 1
+            
+            if response['confidence'] > 0.3:
+                self.metrics['successful_responses'] += 1
+            else:
+                self.metrics['failed_responses'] += 1
+            
+            # Update averages
+            self.metrics['average_confidence'] = (
+                (self.metrics['average_confidence'] * (self.metrics['queries_processed'] - 1) + response['confidence'])
+                / self.metrics['queries_processed']
+            )
+            
+            self.metrics['average_response_time'] = (
+                (self.metrics['average_response_time'] * (self.metrics['queries_processed'] - 1) + response_time)
+                / self.metrics['queries_processed']
+            )
+            
+            # Log response details
+            self.logger.info(f"Response generated - Confidence: {response['confidence']:.2f}, "
+                           f"Time: {response_time:.2f}s, Sources: {len(response['sources'])}")
+            
+            response['response_time'] = response_time
+            return response
+            
+        except Exception as e:
+            self.metrics['failed_responses'] += 1
+            self.logger.error(f"Error processing query '{query}': {str(e)}")
+            
+            return {
+                'answer': self.fallback_responses['api_error'],
+                'sources': [],
+                'confidence': 0.0,
+                'context_used': "",
+                'error': str(e),
+                'response_time': (datetime.now() - start_time).total_seconds()
+            }
+    
+    def get_system_metrics(self) -> Dict[str, Any]:
+        """Get current system metrics."""
+        return {
+            **self.metrics,
+            'success_rate': (
+                self.metrics['successful_responses'] / max(self.metrics['queries_processed'], 1)
+            ) * 100
+        }</code></pre>
+            </section>
+
+            <!-- Continue with remaining sections... -->
+            <!-- Section 9: Advanced RAG Patterns -->
+            <section id="advanced-patterns" class="content-section">
+                <h2>9. Advanced RAG Patterns</h2>
+
+                <h3>Multi-hop RAG</h3>
+                <p>Multi-hop RAG enables following chains of information across multiple retrieval steps, allowing for complex reasoning over interconnected documents:</p>
+
+                <pre><code class="language-python">class MultiHopRAG:
+    def __init__(self, base_rag_system):
+        self.base_rag = base_rag_system
+        self.max_hops = 3
+    
+    def multi_hop_retrieval(self, initial_query: str) -> Dict[str, Any]:
+        """Perform multi-hop retrieval following information chains."""
+        
+        all_context = []
+        all_sources = []
+        current_query = initial_query
+        
+        for hop in range(self.max_hops):
+            # Retrieve context for current query
+            context_data = self.base_rag.retrieve_context(current_query, k=3)
+            
+            if not context_data['context'] or context_data['confidence'] < 0.4:
+                break
+            
+            all_context.append({
+                'hop': hop + 1,
+                'query': current_query,
+                'context': context_data['context'],
+                'confidence': context_data['confidence']
+            })
+            
+            all_sources.extend(context_data['sources'])
+            
+            # Generate follow-up questions based on retrieved context
+            follow_up_query = self._generate_follow_up_query(initial_query, context_data['context'])
+            
+            if not follow_up_query or follow_up_query == current_query:
+                break
+                
+            current_query = follow_up_query
+        
+        # Combine all retrieved context
+        combined_context = self._combine_multi_hop_context(all_context)
+        
+        return {
+            'context': combined_context,
+            'sources': all_sources,
+            'hops_taken': len(all_context),
+            'confidence': np.mean([ctx['confidence'] for ctx in all_context]) if all_context else 0
+        }
+    
+    def _generate_follow_up_query(self, original_query: str, context: str) -> str:
+        """Generate follow-up queries based on retrieved context."""
+        prompt = f"""
+        Original question: {original_query}
+        
+        Context found: {context[:500]}...
+        
+        Based on the context, what follow-up question would help gather more complete information to answer the original question? 
+        Generate ONE specific follow-up question that explores related concepts or deeper details.
+        If no follow-up is needed, respond with "NONE".
+        
+        Follow-up question:"""
+        
+        try:
+            response = completion(
+                model=self.base_rag.llm_model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=100
+            )
+            
+            follow_up = response.choices[0].message.content.strip()
+            return follow_up if follow_up != "NONE" else None
+            
+        except Exception:
+            return None</code></pre>
+
+                <h3>Conversational RAG</h3>
+                <p>Maintaining context across conversation turns for coherent multi-turn interactions:</p>
+
+                <pre><code class="language-python">class ConversationalRAG:
+    def __init__(self, base_rag_system, max_history: int = 5):
+        self.base_rag = base_rag_system
+        self.max_history = max_history
+        self.conversation_history = []
+    
+    def conversational_response(self, query: str, user_id: str = "default") -> Dict[str, Any]:
+        """Generate response considering conversation history."""
+        
+        # Add current query to history
+        self.conversation_history.append({
+            'user_id': user_id,
+            'query': query,
+            'timestamp': datetime.now()
+        })
+        
+        # Keep only recent history
+        if len(self.conversation_history) > self.max_history:
+            self.conversation_history = self.conversation_history[-self.max_history:]
+        
+        # Create contextualized query
+        contextualized_query = self._create_contextualized_query(query)
+        
+        # Retrieve with enhanced context
+        context_data = self.base_rag.retrieve_context(contextualized_query, k=5)
+        
+        # Generate response with conversation awareness
+        response = self._generate_conversational_response(query, context_data)
+        
+        # Add response to history
+        self.conversation_history[-1]['response'] = response['answer']
+        
+        return response
+    
+    def _create_contextualized_query(self, current_query: str) -> str:
+        """Create query that includes conversation context."""
+        if len(self.conversation_history) <= 1:
+            return current_query
+        
+        # Include recent conversation context
+        recent_context = []
+        for item in self.conversation_history[-3:-1]:  # Last 2 exchanges
+            recent_context.append(f"Previous Q: {item['query']}")
+            if 'response' in item:
+                recent_context.append(f"Previous A: {item['response'][:100]}...")
+        
+        context_str = "\n".join(recent_context)
+        
+        return f"""Conversation context:
+{context_str}
+
+Current question: {current_query}
+
+[Note: Consider the conversation history when searching for relevant information]"""</code></pre>
+
+                <h3>Multi-modal RAG</h3>
+                <p>Extending RAG to handle images, tables, and structured data:</p>
+
+                <pre><code class="language-python">class MultiModalRAG:
+    def __init__(self, base_rag_system):
+        self.base_rag = base_rag_system
+        self.supported_formats = ['text', 'table', 'image', 'structured']
+    
+    def process_multimodal_document(self, document: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Process documents containing multiple content types."""
+        chunks = []
+        
+        content_type = document.get('content_type', 'text')
+        
+        if content_type == 'table':
+            chunks.extend(self._process_table(document))
+        elif content_type == 'image':
+            chunks.extend(self._process_image(document))
+        elif content_type == 'structured':
+            chunks.extend(self._process_structured_data(document))
+        else:
+            # Default text processing
+            text_chunks = self.base_rag._chunk_text(document.get('content', ''))
+            for i, chunk in enumerate(text_chunks):
+                chunks.append({
+                    'content': chunk,
+                    'content_type': 'text',
+                    'metadata': {**document.get('metadata', {}), 'chunk_index': i}
+                })
+        
+        return chunks
+    
+    def _process_table(self, document: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Convert tables to searchable text format."""
+        table_data = document.get('table_data', [])
+        headers = document.get('headers', [])
+        
+        chunks = []
+        
+        # Create header description
+        if headers:
+            header_chunk = f"Table columns: {', '.join(headers)}"
+            chunks.append({
+                'content': header_chunk,
+                'content_type': 'table_header',
+                'metadata': {**document.get('metadata', {}), 'data_type': 'headers'}
+            })
+        
+        # Process table rows
+        for i, row in enumerate(table_data):
+            if isinstance(row, dict):
+                row_text = "; ".join([f"{k}: {v}" for k, v in row.items()])
+            elif isinstance(row, list) and headers:
+                row_text = "; ".join([f"{headers[j]}: {val}" for j, val in enumerate(row) if j < len(headers)])
+            else:
+                row_text = str(row)
+            
+            chunks.append({
+                'content': f"Table row {i+1}: {row_text}",
+                'content_type': 'table_row',
+                'metadata': {**document.get('metadata', {}), 'row_index': i}
+            })
+        
+        return chunks</code></pre>
+
+                <h3>Agentic RAG Integration</h3>
+                <p>Connecting RAG with tool calling from Week 10 for enhanced capabilities:</p>
+
+                <pre><code class="language-python">class AgenticRAG:
+    def __init__(self, rag_system, tool_executor):
+        self.rag = rag_system
+        self.tools = tool_executor
+    
+    def agentic_response(self, query: str) -> Dict[str, Any]:
+        """Generate response using both RAG and tools as needed."""
+        
+        # First, try to answer with RAG
+        rag_response = self.rag.generate_response(query)
+        
+        # Check if RAG response is sufficient
+        if rag_response['confidence'] > 0.7:
+            return {
+                'answer': rag_response['answer'],
+                'method': 'rag',
+                'sources': rag_response['sources'],
+                'confidence': rag_response['confidence']
+            }
+        
+        # If RAG confidence is low, consider using tools
+        tool_decision = self._should_use_tools(query, rag_response)
+        
+        if tool_decision['use_tools']:
+            # Execute relevant tools
+            tool_results = self._execute_relevant_tools(query, tool_decision['tools'])
+            
+            # Combine RAG context with tool results
+            enhanced_context = self._combine_rag_and_tools(
+                rag_response['context_used'], 
+                tool_results
+            )
+            
+            # Generate final response
+            final_response = self._generate_enhanced_response(
+                query, enhanced_context, rag_response['sources'], tool_results
+            )
+            
+            return {
+                'answer': final_response,
+                'method': 'rag_plus_tools',
+                'sources': rag_response['sources'],
+                'tools_used': [tool['name'] for tool in tool_results],
+                'confidence': min(rag_response['confidence'] + 0.2, 1.0)
+            }
+        
+        return rag_response</code></pre>
+
+                <div class="concept-section">
+                    <div class="concept-header">
+                        <h3 class="concept-title">Advanced Pattern Benefits</h3>
+                    </div>
+                    <ul>
+                        <li><strong>Multi-hop RAG:</strong> Enables complex reasoning across interconnected information</li>
+                        <li><strong>Conversational RAG:</strong> Maintains coherent context in multi-turn interactions</li>
+                        <li><strong>Multi-modal RAG:</strong> Handles diverse content types beyond plain text</li>
+                        <li><strong>Agentic Integration:</strong> Combines retrieval with dynamic tool execution</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 10: Performance Optimization & Best Practices -->
+            <section id="performance-optimization" class="content-section">
+                <h2>10. Performance Optimization & Best Practices</h2>
+
+                <h3>Latency Optimization</h3>
+                <p>Reducing response times is crucial for user experience in production RAG systems:</p>
+
+                <h4>Caching Strategies</h4>
+                <pre><code class="language-python">import redis
+import hashlib
+import json
+
+class RAGCache:
+    def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379):
+        self.redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+        self.embedding_cache_ttl = 3600  # 1 hour
+        self.response_cache_ttl = 300    # 5 minutes
+    
+    def cache_embeddings(self, text: str, embedding: np.ndarray):
+        """Cache embeddings to avoid recomputation."""
+        cache_key = f"emb:{hashlib.md5(text.encode()).hexdigest()}"
+        embedding_json = json.dumps(embedding.tolist())
+        self.redis_client.setex(cache_key, self.embedding_cache_ttl, embedding_json)
+    
+    def get_cached_embedding(self, text: str) -> Optional[np.ndarray]:
+        """Retrieve cached embedding."""
+        cache_key = f"emb:{hashlib.md5(text.encode()).hexdigest()}"
+        cached = self.redis_client.get(cache_key)
+        
+        if cached:
+            return np.array(json.loads(cached))
+        return None
+    
+    def cache_response(self, query: str, response: Dict[str, Any]):
+        """Cache complete responses for frequent queries."""
+        cache_key = f"resp:{hashlib.md5(query.encode()).hexdigest()}"
+        response_json = json.dumps(response, default=str)
+        self.redis_client.setex(cache_key, self.response_cache_ttl, response_json)
+    
+    def get_cached_response(self, query: str) -> Optional[Dict[str, Any]]:
+        """Retrieve cached response."""
+        cache_key = f"resp:{hashlib.md5(query.encode()).hexdigest()}"
+        cached = self.redis_client.get(cache_key)
+        
+        if cached:
+            return json.loads(cached)
+        return None</code></pre>
+
+                <h4>Async Processing</h4>
+                <pre><code class="language-python">import asyncio
+import aiohttp
+from concurrent.futures import ThreadPoolExecutor
+
+class AsyncRAGSystem:
+    def __init__(self, base_rag_system):
+        self.base_rag = base_rag_system
+        self.cache = RAGCache()
+        self.executor = ThreadPoolExecutor(max_workers=4)
+    
+    async def async_generate_response(self, query: str) -> Dict[str, Any]:
+        """Generate response asynchronously."""
+        
+        # Check cache first
+        cached_response = await asyncio.get_event_loop().run_in_executor(
+            self.executor, self.cache.get_cached_response, query
+        )
+        
+        if cached_response:
+            cached_response['from_cache'] = True
+            return cached_response
+        
+        # Run retrieval and generation in parallel
+        retrieval_task = asyncio.get_event_loop().run_in_executor(
+            self.executor, self.base_rag.retrieve_context, query, 5
+        )
+        
+        context_data = await retrieval_task
+        
+        if context_data['context']:
+            # Generate response
+            response = await asyncio.get_event_loop().run_in_executor(
+                self.executor, 
+                self._generate_with_context, 
+                query, 
+                context_data
+            )
+            
+            # Cache the response
+            await asyncio.get_event_loop().run_in_executor(
+                self.executor, self.cache.cache_response, query, response
+            )
+            
+            response['from_cache'] = False
+            return response
+        
+        return {
+            'answer': "I don't have relevant information to answer this question.",
+            'sources': [],
+            'confidence': 0.0,
+            'from_cache': False
+        }</code></pre>
+
+                <h4>Batch Processing</h4>
+                <pre><code class="language-python">class BatchRAGProcessor:
+    def __init__(self, rag_system, batch_size: int = 10):
+        self.rag = rag_system
+        self.batch_size = batch_size
+    
+    async def process_batch_queries(self, queries: List[str]) -> List[Dict[str, Any]]:
+        """Process multiple queries efficiently."""
+        
+        # Group queries into batches
+        batches = [queries[i:i + self.batch_size] for i in range(0, len(queries), self.batch_size)]
+        
+        all_results = []
+        
+        for batch in batches:
+            # Process batch concurrently
+            tasks = [self._process_single_query(query) for query in batch]
+            batch_results = await asyncio.gather(*tasks)
+            all_results.extend(batch_results)
+        
+        return all_results
+    
+    async def _process_single_query(self, query: str) -> Dict[str, Any]:
+        """Process a single query asynchronously."""
+        return await self.rag.async_generate_response(query)</code></pre>
+
+                <h3>Cost Management</h3>
+                <p>Optimizing costs in production RAG systems:</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cost Factor</th>
+                            <th>Optimization Strategy</th>
+                            <th>Implementation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Embedding Generation</strong></td>
+                            <td>Use efficient models, batch processing</td>
+                            <td>Local models, embedding caching</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Vector Database</strong></td>
+                            <td>Optimize storage, use compression</td>
+                            <td>Quantization, efficient indexing</td>
+                        </tr>
+                        <tr>
+                            <td><strong>LLM API Calls</strong></td>
+                            <td>Response caching, prompt optimization</td>
+                            <td>Redis caching, shorter contexts</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Compute Resources</strong></td>
+                            <td>Auto-scaling, efficient algorithms</td>
+                            <td>Kubernetes, optimized retrieval</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Quality Metrics</h3>
+                <p>Measuring and monitoring RAG system performance:</p>
+
+                <h4>Automated Quality Assessment</h4>
+                <pre><code class="language-python">class RAGQualityMetrics:
+    def __init__(self):
+        from sentence_transformers import CrossEncoder
+        self.relevance_scorer = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+    
+    def evaluate_response_quality(self, query: str, response: str, context: str, 
+                                ground_truth: str = None) -> Dict[str, float]:
+        """Comprehensive response quality evaluation."""
+        
+        metrics = {}
+        
+        # 1. Relevance to query
+        metrics['query_relevance'] = float(self.relevance_scorer.predict([(query, response)])[0])
+        
+        # 2. Context faithfulness (grounding)
+        metrics['context_faithfulness'] = float(self.relevance_scorer.predict([(context, response)])[0])
+        
+        # 3. Answer completeness
+        metrics['completeness'] = self._assess_completeness(query, response)
+        
+        # 4. Factual consistency
+        metrics['factual_consistency'] = self._check_factual_consistency(response, context)
+        
+        # 5. Ground truth similarity (if available)
+        if ground_truth:
+            metrics['ground_truth_similarity'] = float(
+                self.relevance_scorer.predict([(ground_truth, response)])[0]
+            )
+        
+        # Overall quality score
+        weights = {'query_relevance': 0.3, 'context_faithfulness': 0.3, 
+                  'completeness': 0.2, 'factual_consistency': 0.2}
+        
+        metrics['overall_quality'] = sum(
+            metrics[key] * weight for key, weight in weights.items() if key in metrics
+        )
+        
+        return metrics
+    
+    def _assess_completeness(self, query: str, response: str) -> float:
+        """Assess how completely the response answers the query."""
+        # Simple heuristic - can be improved with more sophisticated methods
+        
+        # Check response length
+        length_score = min(len(response.split()) / 50, 1.0)
+        
+        # Check if response addresses the query type
+        question_words = ['what', 'how', 'why', 'when', 'where', 'who']
+        query_lower = query.lower()
+        response_lower = response.lower()
+        
+        address_score = 0
+        for word in question_words:
+            if word in query_lower:
+                # Check if response attempts to address this type of question
+                if any(indicator in response_lower for indicator in [word, 'because', 'by', 'through']):
+                    address_score += 0.5
+        
+        return min((length_score + address_score) / 2, 1.0)</code></pre>
+
+                <h3>Production Deployment Best Practices</h3>
+                <div class="implementation-box">
+                    <div class="implementation-title">Production Checklist</div>
+                    <ul>
+                        <li><strong>Scalability:</strong> Horizontal scaling with load balancers</li>
+                        <li><strong>Monitoring:</strong> Comprehensive logging and metrics collection</li>
+                        <li><strong>Error Handling:</strong> Graceful degradation and fallbacks</li>
+                        <li><strong>Security:</strong> Input validation, access control, rate limiting</li>
+                        <li><strong>Data Privacy:</strong> Compliance with regulations, data encryption</li>
+                        <li><strong>Version Control:</strong> Document versioning and rollback procedures</li>
+                        <li><strong>Testing:</strong> Automated testing for quality regression</li>
+                        <li><strong>Documentation:</strong> API documentation and operational guides</li>
+                    </ul>
+                </div>
+
+                <h4>Monitoring Dashboard</h4>
+                <pre><code class="language-python">class RAGMonitoringDashboard:
+    def __init__(self, rag_system):
+        self.rag = rag_system
+        self.metrics_history = []
+    
+    def collect_metrics(self) -> Dict[str, Any]:
+        """Collect current system metrics."""
+        return {
+            'timestamp': datetime.now(),
+            'queries_per_minute': self._calculate_query_rate(),
+            'average_response_time': self.rag.metrics.get('average_response_time', 0),
+            'success_rate': self._calculate_success_rate(),
+            'average_confidence': self.rag.metrics.get('average_confidence', 0),
+            'cache_hit_rate': self._calculate_cache_hit_rate(),
+            'vector_db_size': self._get_vector_db_size(),
+            'memory_usage': self._get_memory_usage(),
+            'error_rate': self._calculate_error_rate()
+        }
+    
+    def generate_health_report(self) -> Dict[str, Any]:
+        """Generate comprehensive system health report."""
+        current_metrics = self.collect_metrics()
+        
+        health_status = "healthy"
+        if current_metrics['success_rate'] < 0.95:
+            health_status = "degraded"
+        if current_metrics['success_rate'] < 0.8:
+            health_status = "unhealthy"
+        
+        return {
+            'status': health_status,
+            'current_metrics': current_metrics,
+            'recommendations': self._generate_recommendations(current_metrics)
+        }</code></pre>
+            </section>
+
+            <!-- Section 11: RAG Evaluation & Testing -->
+            <section id="evaluation-testing" class="content-section">
+                <h2>11. RAG Evaluation & Testing</h2>
+
+                <h3>Evaluation Framework</h3>
+                <p>Comprehensive evaluation is essential for maintaining and improving RAG system quality:</p>
+
+                <h4>Key Evaluation Dimensions</h4>
+                <ul>
+                    <li><strong>Retrieval Quality:</strong> How well the system finds relevant documents</li>
+                    <li><strong>Generation Quality:</strong> How accurately and helpfully the system generates responses</li>
+                    <li><strong>End-to-End Performance:</strong> Overall user satisfaction and task completion</li>
+                    <li><strong>Robustness:</strong> Performance across diverse queries and edge cases</li>
+                </ul>
+
+                <h4>Automated Evaluation Pipeline</h4>
+                <pre><code class="language-python">class RAGEvaluationSuite:
+    def __init__(self, rag_system, test_dataset: List[Dict]):
+        self.rag = rag_system
+        self.test_dataset = test_dataset
+        self.quality_metrics = RAGQualityMetrics()
+    
+    def run_comprehensive_evaluation(self) -> Dict[str, Any]:
+        """Run complete evaluation suite."""
+        
+        results = {
+            'retrieval_metrics': self._evaluate_retrieval(),
+            'generation_metrics': self._evaluate_generation(),
+            'end_to_end_metrics': self._evaluate_end_to_end(),
+            'performance_metrics': self._evaluate_performance()
+        }
+        
+        results['overall_score'] = self._calculate_overall_score(results)
+        
+        return results
+    
+    def _evaluate_retrieval(self) -> Dict[str, float]:
+        """Evaluate retrieval component."""
+        precision_scores = []
+        recall_scores = []
+        
+        for test_case in self.test_dataset:
+            query = test_case['query']
+            relevant_docs = set(test_case.get('relevant_document_ids', []))
+            
+            # Retrieve documents
+            retrieved = self.rag.retrieve_context(query, k=10)
+            retrieved_ids = set([source['id'] for source in retrieved['sources']])
+            
+            if retrieved_ids:
+                # Calculate precision and recall
+                intersection = relevant_docs.intersection(retrieved_ids)
+                precision = len(intersection) / len(retrieved_ids)
+                recall = len(intersection) / len(relevant_docs) if relevant_docs else 0
+                
+                precision_scores.append(precision)
+                recall_scores.append(recall)
+        
+        return {
+            'precision': np.mean(precision_scores) if precision_scores else 0,
+            'recall': np.mean(recall_scores) if recall_scores else 0,
+            'f1_score': self._calculate_f1(np.mean(precision_scores), np.mean(recall_scores))
+        }
+    
+    def _evaluate_generation(self) -> Dict[str, float]:
+        """Evaluate response generation quality."""
+        quality_scores = []
+        
+        for test_case in self.test_dataset:
+            query = test_case['query']
+            expected_answer = test_case.get('expected_answer', '')
+            
+            # Generate response
+            response = self.rag.generate_response(query)
+            
+            # Evaluate quality
+            quality = self.quality_metrics.evaluate_response_quality(
+                query=query,
+                response=response['answer'],
+                context=response['context_used'],
+                ground_truth=expected_answer if expected_answer else None
+            )
+            
+            quality_scores.append(quality['overall_quality'])
+        
+        return {
+            'average_quality': np.mean(quality_scores) if quality_scores else 0,
+            'quality_std': np.std(quality_scores) if quality_scores else 0
+        }</code></pre>
+
+                <h3>A/B Testing Framework</h3>
+                <p>Compare different RAG configurations and strategies:</p>
+
+                <pre><code class="language-python">class RAGABTesting:
+    def __init__(self, rag_systems: Dict[str, Any], test_queries: List[str]):
+        self.rag_systems = rag_systems  # {'version_a': rag_system_a, 'version_b': rag_system_b}
+        self.test_queries = test_queries
+        self.results = {}
+    
+    def run_ab_test(self) -> Dict[str, Any]:
+        """Run A/B test comparing different RAG systems."""
+        
+        for version_name, rag_system in self.rag_systems.items():
+            print(f"Testing {version_name}...")
+            
+            version_results = {
+                'responses': [],
+                'response_times': [],
+                'confidence_scores': [],
+                'quality_scores': []
+            }
+            
+            for query in self.test_queries:
+                start_time = time.time()
+                
+                # Generate response
+                response = rag_system.generate_response(query)
+                
+                response_time = time.time() - start_time
+                
+                version_results['responses'].append(response)
+                version_results['response_times'].append(response_time)
+                version_results['confidence_scores'].append(response['confidence'])
+                
+                # Quality assessment
+                quality = self._assess_response_quality(query, response)
+                version_results['quality_scores'].append(quality)
+            
+            # Calculate summary statistics
+            self.results[version_name] = {
+                'avg_response_time': np.mean(version_results['response_times']),
+                'avg_confidence': np.mean(version_results['confidence_scores']),
+                'avg_quality': np.mean(version_results['quality_scores']),
+                'response_time_p95': np.percentile(version_results['response_times'], 95),
+                'detailed_results': version_results
+            }
+        
+        # Statistical significance testing
+        significance_results = self._test_statistical_significance()
+        
+        return {
+            'results': self.results,
+            'significance': significance_results,
+            'recommendation': self._generate_recommendation()
+        }
+    
+    def _test_statistical_significance(self) -> Dict[str, Any]:
+        """Test if differences between versions are statistically significant."""
+        from scipy import stats
+        
+        if len(self.rag_systems) != 2:
+            return {'error': 'Statistical testing requires exactly 2 versions'}
+        
+        versions = list(self.results.keys())
+        quality_a = self.results[versions[0]]['detailed_results']['quality_scores']
+        quality_b = self.results[versions[1]]['detailed_results']['quality_scores']
+        
+        # Perform t-test
+        t_stat, p_value = stats.ttest_ind(quality_a, quality_b)
+        
+        return {
+            'versions_compared': versions,
+            't_statistic': t_stat,
+            'p_value': p_value,
+            'significant': p_value < 0.05,
+            'effect_size': (np.mean(quality_a) - np.mean(quality_b)) / np.sqrt(
+                (np.var(quality_a) + np.var(quality_b)) / 2
+            )
+        }</code></pre>
+
+                <h3>User Feedback Integration</h3>
+                <p>Incorporating human feedback for continuous improvement:</p>
+
+                <pre><code class="language-python">class UserFeedbackSystem:
+    def __init__(self, rag_system):
+        self.rag = rag_system
+        self.feedback_db = sqlite3.connect('user_feedback.db')
+        self._initialize_feedback_db()
+    
+    def _initialize_feedback_db(self):
+        """Initialize feedback database."""
+        cursor = self.feedback_db.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query TEXT NOT NULL,
+                response TEXT NOT NULL,
+                rating INTEGER,
+                feedback_text TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                user_id TEXT
+            )
+        ''')
+        self.feedback_db.commit()
+    
+    def collect_feedback(self, query: str, response: str, rating: int, 
+                        feedback_text: str = "", user_id: str = "anonymous"):
+        """Store user feedback."""
+        cursor = self.feedback_db.cursor()
+        cursor.execute('''
+            INSERT INTO feedback (query, response, rating, feedback_text, user_id)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (query, response, rating, feedback_text, user_id))
+        self.feedback_db.commit()
+    
+    def analyze_feedback_patterns(self) -> Dict[str, Any]:
+        """Analyze feedback to identify improvement opportunities."""
+        cursor = self.feedback_db.cursor()
+        
+        # Overall satisfaction
+        cursor.execute('SELECT AVG(rating), COUNT(*) FROM feedback')
+        avg_rating, total_feedback = cursor.fetchone()
+        
+        # Low-rated queries for improvement
+        cursor.execute('''
+            SELECT query, AVG(rating), COUNT(*) as count
+            FROM feedback
+            WHERE rating <= 2
+            GROUP BY query
+            ORDER BY count DESC
+            LIMIT 10
+        ''')
+        problem_queries = cursor.fetchall()
+        
+        # High-rated queries (good examples)
+        cursor.execute('''
+            SELECT query, AVG(rating), COUNT(*) as count
+            FROM feedback
+            WHERE rating >= 4
+            GROUP BY query
+            ORDER BY count DESC
+            LIMIT 10
+        ''')
+        successful_queries = cursor.fetchall()
+        
+        return {
+            'overall_satisfaction': avg_rating if avg_rating else 0,
+            'total_feedback_count': total_feedback if total_feedback else 0,
+            'problem_areas': [
+                {'query': q[0], 'avg_rating': q[1], 'frequency': q[2]} 
+                for q in problem_queries
+            ],
+            'success_patterns': [
+                {'query': q[0], 'avg_rating': q[1], 'frequency': q[2]} 
+                for q in successful_queries
+            ]
+        }</code></pre>
+
+                <div class="highlight-box">
+                    <div class="highlight-title">Evaluation Best Practices</div>
+                    <ul>
+                        <li><strong>Diverse Test Cases:</strong> Include edge cases, domain-specific queries, and common use cases</li>
+                        <li><strong>Regular Evaluation:</strong> Set up automated evaluation pipelines for continuous monitoring</li>
+                        <li><strong>Multi-dimensional Assessment:</strong> Evaluate both technical metrics and user experience</li>
+                        <li><strong>Baseline Comparisons:</strong> Always compare against previous versions or alternative approaches</li>
+                        <li><strong>Real-world Testing:</strong> Supplement automated tests with real user interactions</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Section 12: Summary & Lab Preview -->
+            <section id="summary" class="content-section">
+                <h2>12. Summary & Lab Preview</h2>
+
+                <h3>Learning Objectives Recap</h3>
+                <p>Let's review what we've accomplished in this comprehensive RAG deep dive:</p>
+
+                <div class="comparison-grid">
+                    <div class="comparison-item">
+                        <h5>Conceptual Understanding</h5>
+                        <ul>
+                            <li>✓ RAG fundamentals and architecture</li>
+                            <li>✓ Knowledge limitations of traditional LLMs</li>
+                            <li>✓ RAG vs fine-tuning trade-offs</li>
+                            <li>✓ Real-world applications and use cases</li>
+                        </ul>
+                    </div>
+                    <div class="comparison-item">
+                        <h5>Technical Implementation</h5>
+                        <ul>
+                            <li>✓ Complete RAG pipeline implementation</li>
+                            <li>✓ Document processing and chunking strategies</li>
+                            <li>✓ Vector embeddings and similarity search</li>
+                            <li>✓ Advanced retrieval and generation techniques</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <h3>RAG Implementation Checklist</h3>
+                <div class="implementation-box">
+                    <div class="implementation-title">Production RAG System Components</div>
+                    <ol>
+                        <li><strong>Document Processing Pipeline</strong>
+                            <ul>
+                                <li>Multi-format document ingestion</li>
+                                <li>Intelligent text chunking</li>
+                                <li>Metadata extraction and management</li>
+                            </ul>
+                        </li>
+                        <li><strong>Vector Search Infrastructure</strong>
+                            <ul>
+                                <li>Embedding model selection and optimization</li>
+                                <li>Vector database setup and configuration</li>
+                                <li>Similarity search algorithms</li>
+                            </ul>
+                        </li>
+                        <li><strong>Retrieval Optimization</strong>
+                            <ul>
+                                <li>Hybrid search implementation</li>
+                                <li>Re-ranking and query expansion</li>
+                                <li>Context window management</li>
+                            </ul>
+                        </li>
+                        <li><strong>Generation Enhancement</strong>
+                            <ul>
+                                <li>Prompt engineering for RAG</li>
+                                <li>Citation and source attribution</li>
+                                <li>Quality control and validation</li>
+                            </ul>
+                        </li>
+                        <li><strong>Production Readiness</strong>
+                            <ul>
+                                <li>Performance optimization and caching</li>
+                                <li>Error handling and monitoring</li>
+                                <li>Evaluation and continuous improvement</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+
+                <h3>Lab Session Preview: Hands-On RAG Development</h3>
+                <p>In today's 2-hour lab session, you will build a complete RAG system from scratch:</p>
+
+                <h4>Lab Exercise 1: Basic RAG Pipeline (45 minutes)</h4>
+                <ul>
+                    <li>Set up vector database (Chroma) and embedding model</li>
+                    <li>Process and index a collection of technical documents</li>
+                    <li>Implement basic retrieval and generation</li>
+                    <li>Test with sample queries and evaluate responses</li>
+                </ul>
+
+                <h4>Lab Exercise 2: Advanced Retrieval (30 minutes)</h4>
+                <ul>
+                    <li>Implement hybrid search combining semantic and keyword search</li>
+                    <li>Add re-ranking using cross-encoder models</li>
+                    <li>Optimize context window management</li>
+                    <li>Compare performance with basic retrieval</li>
+                </ul>
+
+                <h4>Lab Exercise 3: Production Features (30 minutes)</h4>
+                <ul>
+                    <li>Add response caching and performance monitoring</li>
+                    <li>Implement citation and source attribution</li>
+                    <li>Create evaluation metrics and quality assessment</li>
+                    <li>Build a simple web interface for testing</li>
+                </ul>
+
+                <h4>Lab Exercise 4: Advanced Patterns (15 minutes)</h4>
+                <ul>
+                    <li>Experiment with conversational RAG</li>
+                    <li>Implement multi-hop retrieval for complex queries</li>
+                    <li>Test system robustness with edge cases</li>
+                    <li>Document lessons learned and optimization opportunities</li>
+                </ul>
+
+                <h3>Connection to Real-World Applications</h3>
+                <p>The RAG techniques you've learned today are directly applicable to:</p>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Industry</th>
+                            <th>Use Case</th>
+                            <th>Key RAG Features</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Enterprise Software</strong></td>
+                            <td>Internal knowledge management</td>
+                            <td>Document processing, security, multi-user</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Customer Support</strong></td>
+                            <td>Automated help desk</td>
+                            <td>Conversational RAG, source attribution</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Research & Academia</strong></td>
+                            <td>Literature review and analysis</td>
+                            <td>Multi-hop retrieval, citation management</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Legal Technology</strong></td>
+                            <td>Case law research</td>
+                            <td>Precise retrieval, confidence scoring</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Healthcare</strong></td>
+                            <td>Clinical decision support</td>
+                            <td>Multi-modal data, quality validation</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Key Takeaways for Production Systems</h3>
+                <div class="concept-section">
+                    <div class="concept-header">
+                        <h3 class="concept-title">RAG Success Factors</h3>
+                    </div>
+                    <ul>
+                        <li><strong>Data Quality:</strong> High-quality, well-structured knowledge base is fundamental</li>
+                        <li><strong>Retrieval Precision:</strong> Accurate retrieval is more important than perfect generation</li>
+                        <li><strong>User Experience:</strong> Fast response times and clear citations build trust</li>
+                        <li><strong>Continuous Improvement:</strong> Regular evaluation and optimization are essential</li>
+                        <li><strong>Domain Adaptation:</strong> Customize chunking, embedding, and prompts for your domain</li>
+                    </ul>
+                </div>
+
+                <h3>Looking Ahead: Advanced Topics</h3>
+                <p>Future sessions and advanced study topics include:</p>
+                <ul>
+                    <li><strong>Multi-Agent RAG Systems:</strong> Coordinating multiple specialized RAG agents</li>
+                    <li><strong>Real-Time RAG:</strong> Handling streaming data and live updates</li>
+                    <li><strong>Multilingual RAG:</strong> Cross-language information retrieval</li>
+                    <li><strong>Graph-Enhanced RAG:</strong> Incorporating knowledge graphs</li>
+                    <li><strong>Federated RAG:</strong> Privacy-preserving distributed knowledge systems</li>
+                </ul>
+
+                <div class="highlight-box">
+                    <div class="highlight-title">Ready for the Lab</div>
+                    <p>You now have the theoretical foundation and practical knowledge to build sophisticated RAG systems. The lab session will reinforce these concepts through hands-on implementation, giving you direct experience with the challenges and solutions in production RAG development.</p>
+                </div>
+
+                <p><strong>Remember:</strong> RAG is not just about retrieving and generating - it's about creating intelligent systems that can access, understand, and synthesize vast amounts of information to provide accurate, helpful, and trustworthy responses to users.</p>
+            </section>
+        </div>
+    </main>
+
+    <!-- Scroll to Top Button -->
+    <button class="scroll-to-top" id="scrollToTop" title="Scroll to Top">↑</button>
+
+    <!-- JavaScript -->
+    <script>
+        // Navigation functionality
+        const navToggle = document.getElementById('navToggle');
+        const navSidebar = document.getElementById('navSidebar');
+        const navLinks = document.querySelectorAll('.nav-link');
+        const scrollToTopBtn = document.getElementById('scrollToTop');
+
+        // Mobile navigation toggle
+        navToggle.addEventListener('click', () => {
+            navSidebar.classList.toggle('open');
+        });
+
+        // Close nav when clicking outside on mobile
+        document.addEventListener('click', (e) => {
+            if (window.innerWidth <= 1024 && 
+                !navSidebar.contains(e.target) && 
+                !navToggle.contains(e.target) && 
+                navSidebar.classList.contains('open')) {
+                navSidebar.classList.remove('open');
+            }
+        });
+
+        // Smooth scrolling for navigation links
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = link.getAttribute('href');
+                const targetSection = document.querySelector(targetId);
+                
+                if (targetSection) {
+                    targetSection.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                    
+                    // Close mobile nav after clicking
+                    if (window.innerWidth <= 1024) {
+                        navSidebar.classList.remove('open');
+                    }
+                }
+            });
+        });
+
+        // Active section highlighting (scrollspy)
+        function updateActiveSection() {
+            const sections = document.querySelectorAll('.content-section, .learning-objectives');
+            const scrollPosition = window.scrollY + 200; // Offset for better UX
+
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.offsetHeight;
+                const sectionId = section.getAttribute('id');
+
+                if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
+                    // Remove active class from all links
+                    navLinks.forEach(link => link.classList.remove('active'));
+                    
+                    // Add active class to corresponding link
+                    const activeLink = document.querySelector(`a[href="#${sectionId}"]`);
+                    if (activeLink) {
+                        activeLink.classList.add('active');
+                    }
+                }
+            });
+        }
+
+        // Scroll to top functionality
+        function toggleScrollToTop() {
+            if (window.scrollY > 300) {
+                scrollToTopBtn.classList.add('visible');
+            } else {
+                scrollToTopBtn.classList.remove('visible');
+            }
+        }
+
+        scrollToTopBtn.addEventListener('click', () => {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        });
+
+        // Event listeners
+        window.addEventListener('scroll', () => {
+            updateActiveSection();
+            toggleScrollToTop();
+        });
+
+        // Initial calls
+        updateActiveSection();
+        toggleScrollToTop();
+
+        // Handle resize
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 1024) {
+                navSidebar.classList.remove('open');
+            }
+        });
+    </script>
+
+    <!-- Syntax Highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/components/prism-core.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.24.1/plugins/autoloader/prism-autoloader.min.js"></script>
+<style>
+#minimax-floating-ball {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 12px;
+  background: #222222;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  color: #F8F8F8;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  z-index: 9999;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+#minimax-floating-ball:hover {
+  transform: translateY(-2px);
+  background: #383838;
+}
+.minimax-ball-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.minimax-logo-wave {
+  width: 26px;
+  height: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='22' viewBox='0 0 26 22' fill='none'%3E%3Cg clip-path='url(%23clip0_3442_102412)'%3E%3Cpath d='M12.8405 14.6775C12.8405 14.9897 13.0932 15.2424 13.4055 15.2424C13.7178 15.2424 13.9705 14.9897 13.9705 14.6775V2.98254C13.9705 1.88957 13.0809 1 11.9879 1C10.895 1 10.0054 1.88957 10.0054 2.98254V11.566V17.1068C10.0054 17.5773 9.62327 17.9594 9.1528 17.9594C8.68233 17.9594 8.30021 17.5773 8.30021 17.1068V8.04469C8.30021 6.95172 7.41063 6.06215 6.31767 6.06215C5.22471 6.06215 4.33513 6.95172 4.33513 8.04469V11.8855C4.33513 12.3559 3.953 12.7381 3.48254 12.7381C3.01207 12.7381 2.62994 12.3559 2.62994 11.8855V10.4936C2.62994 10.1813 2.37725 9.92861 2.06497 9.92861C1.7527 9.92861 1.5 10.1813 1.5 10.4936V11.8855C1.5 12.9784 2.38957 13.868 3.48254 13.868C4.5755 13.868 5.46508 12.9784 5.46508 11.8855V8.04469C5.46508 7.57422 5.8472 7.19209 6.31767 7.19209C6.78814 7.19209 7.17026 7.57422 7.17026 8.04469V17.1068C7.17026 18.1998 8.05984 19.0894 9.1528 19.0894C10.2458 19.0894 11.1353 18.1998 11.1353 17.1068V2.98254C11.1353 2.51207 11.5175 2.12994 11.9879 2.12994C12.4584 2.12994 12.8405 2.51207 12.8405 2.98254V14.6775Z' fill='%23F8F8F8'/%3E%3Cpath d='M23.3278 6.06215C22.2348 6.06215 21.3452 6.95172 21.3452 8.04469V15.6143C21.3452 16.0847 20.9631 16.4669 20.4926 16.4669C20.0222 16.4669 19.6401 16.0847 19.6401 15.6143V2.98254C19.6401 1.88957 18.7505 1 17.6575 1C16.5645 1 15.675 1.88957 15.675 2.98254V19.0175C15.675 19.4879 15.2928 19.8701 14.8224 19.8701C14.3519 19.8701 13.9698 19.4879 13.9698 19.0175V17.0329C13.9698 16.7206 13.7171 16.4679 13.4048 16.4679C13.0925 16.4679 12.8398 16.7206 12.8398 17.0329V19.0175C12.8398 20.1104 13.7294 21 14.8224 21C15.9153 21 16.8049 20.1104 16.8049 19.0175V2.98254C16.8049 2.51207 17.187 2.12994 17.6575 2.12994C18.128 2.12994 18.5101 2.51207 18.5101 2.98254V15.6143C18.5101 16.7072 19.3997 17.5968 20.4926 17.5968C21.5856 17.5968 22.4752 16.7072 22.4752 15.6143V8.04469C22.4752 7.57422 22.8573 7.19209 23.3278 7.19209C23.7982 7.19209 24.1804 7.57422 24.1804 8.04469V14.6775C24.1804 14.9897 24.4331 15.2424 24.7453 15.2424C25.0576 15.2424 25.3103 14.9897 25.3103 14.6775V8.04469C25.3103 6.95172 24.4207 6.06215 23.3278 6.06215Z' fill='%23F8F8F8'/%3E%3C/g%3E%3Cdefs%3E%3CclipPath id='clip0_3442_102412'%3E%3Crect width='25' height='22' fill='white' transform='translate(0.5)'/%3E%3C/clipPath%3E%3C/defs%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.minimax-ball-text {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.minimax-close-icon {
+  margin-left: 8px;
+  font-size: 16px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.minimax-close-icon:hover {
+  opacity: 1;
+}
+</style>
+<div id="minimax-floating-ball">
+  <div class="minimax-ball-content">
+    <div class="minimax-logo-wave"></div>
+    <span class="minimax-ball-text">Created by MiniMax Agent</span>
+  </div>
+  <div class="minimax-close-icon">×</div>
+</div>
+<script>
+// Initialize floating ball functionality
+function initFloatingBall() {
+  const ball = document.getElementById('minimax-floating-ball');
+  if (!ball) return;
+
+  // Initial animation
+  ball.style.opacity = '0';
+  ball.style.transform = 'translateY(20px)';
+
+  setTimeout(() => {
+    ball.style.opacity = '1';
+    ball.style.transform = 'translateY(0)';
+  }, 500);
+
+  // Handle logo click
+  const ballContent = ball.querySelector('.minimax-ball-content');
+  ballContent.addEventListener('click', function (e) {
+    e.stopPropagation();
+    window.open('https://agent.minimax.io/agent', '_blank');
+    ball.style.transform = 'scale(0.95)';
+    setTimeout(() => {
+      ball.style.transform = 'scale(1)';
+    }, 100);
+  });
+
+  // Handle close button click
+  const closeIcon = ball.querySelector('.minimax-close-icon');
+  closeIcon.addEventListener('click', function (e) {
+    e.stopPropagation();
+    ball.style.opacity = '0';
+    ball.style.transform = 'translateY(20px)';
+
+    setTimeout(() => {
+      ball.style.display = 'none';
+    }, 300);
+  });
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', initFloatingBall); 
+</script>
+</body>
+</html>
